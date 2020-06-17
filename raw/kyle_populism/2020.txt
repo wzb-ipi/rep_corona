@@ -1,0 +1,3 @@
+
+elec_pop  = iso %in% c(
+"USA", "MEX", "NIC", "VEN", "BRA", "POL", "HUN", "CZR", "ITA", "SER", "BUL", "BLR", "TUR", "ISR", "IND", "SRI", "PHI")

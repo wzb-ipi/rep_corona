@@ -1,0 +1,168 @@
+country,iso2code,sfi
+Austria,AT,0
+Canada,CA,0
+Denmark,DK,0
+Estonia,EE,0
+Finland,FI,0
+Hungary,HU,0
+Ireland,IE,0
+"Korea, South",KR,0
+Latvia,LV,0
+Luxembourg,LU,0
+Mauritius,MU,0
+Netherlands,NL,0
+Poland,PL,0
+Portugal,PT,0
+Slovenia,SI,0
+Sweden,SE,0
+Albania,AL,1
+Costa Rica,CR,1
+Czech Republic,CZ,1
+France,FR,1
+Germany,DE,1
+Italy,IT,1
+Japan,JP,1
+Lithuania,LT,1
+Slovak Republic,SK,1
+Spain,ES,1
+Switzerland,CH,1
+Taiwan,TW,1
+United Kingdom,GB,1
+Australia,AU,2
+Belgium,BE,2
+Bulgaria,BG,2
+Croatia,HR,2
+Macedonia,MK,2
+Montenegro,ME,2
+New Zealand,NZ,2
+Norway,NO,2
+Uruguay,UY,2
+Argentina,AR,3
+Botswana,BW,3
+Chile,CL,3
+Cyprus,CY,3
+Dominican Republic,DO,3
+Greece,GR,3
+Jamaica,JM,3
+Malaysia,MY,3
+Panama,PA,3
+Qatar,QA,3
+Romania,RO,3
+Serbia,RS,3
+Singapore,SG,3
+Trinidad and Tobago,TT,3
+Bosnia and Herzegovina,BA,4
+El Salvador,SV,4
+Fiji,FJ,4
+Kuwait,KW,4
+Tunisia,TN,4
+United States,US,4
+Belarus,BY,5
+Cape Verde,CV,5
+Cuba,CU,5
+Georgia,GE,5
+Kosovo,XK,5
+Lebanon,LB,5
+Mexico,MX,5
+Namibia,NA,5
+Oman,OM,5
+Suriname,SR,5
+United Arab Emirates,AE,5
+Armenia,AM,6
+Bhutan,BT,6
+Brazil,BR,6
+Peru,PE,6
+China,CN,7
+Ecuador,EC,7
+Honduras,HN,7
+Israel,IL,7
+Jordan,JO,7
+"Korea, North",KP,7
+Mongolia,MN,7
+Morocco,MA,7
+Nicaragua,NI,7
+Swaziland,SZ,7
+Timor Leste,TL,7
+Vietnam,VN,7
+Gabon,GA,8
+Guatemala,GT,8
+Guyana,GY,8
+Indonesia,ID,8
+Moldova,MD,8
+Paraguay,PY,8
+Saudi Arabia,SA,8
+South Africa,ZA,8
+Thailand,TH,8
+Turkmenistan,TM,8
+Bahrain,BH,9
+Iran,IR,9
+Kazakhstan,KZ,9
+Nepal,NP,9
+Russia,RU,9
+Solomon Islands,SB,9
+Turkey,TR,9
+Ukraine,UA,9
+Azerbaijan,AZ,10
+Benin,BJ,10
+Cambodia,KH,10
+Egypt,EG,10
+Kenya,KE,10
+Lesotho,LS,10
+Papua New Guinea,PG,10
+Senegal,SN,10
+Tanzania,TZ,10
+Algeria,DZ,11
+Bangladesh,BD,11
+Bolivia,BO,11
+Colombia,CO,11
+Ghana,GH,11
+Haiti,HT,11
+India,IN,11
+Mozambique,MZ,11
+Sri Lanka,LK,11
+Tajikistan,TJ,11
+Uzbekistan,UZ,11
+Comoros,KM,12
+Djibouti,DJ,12
+Equatorial Guinea,GQ,12
+Kyrgyzstan,KG,12
+Laos,LA,12
+Liberia,LR,12
+Madagascar,MG,12
+Zambia,ZM,12
+Congo-Brazzaville,CG,13
+Malawi,MW,13
+Sierra Leone,SL,13
+Togo,TG,13
+Libya,LY,14
+Philippines,PH,14
+Syria,SY,14
+Uganda,UG,14
+Venezuela,VE,14
+Eritrea,ER,15
+Gambia,GM,15
+Mali,ML,15
+Pakistan,PK,15
+Rwanda,RW,15
+Angola,AO,16
+Burkina Faso,BF,16
+Cameroon,CM,16
+Cote d'Ivoire,CI,16
+Mauritania,MR,16
+Guinea-Bissau,GW,17
+Zimbabwe,ZW,17
+Guinea,GN,18
+Iraq,IQ,18
+Myanmar,MM,18
+Nigeria,NG,18
+Chad,TD,19
+Niger,NE,19
+Afghanistan,AF,20
+Ethiopia,ET,20
+Somalia,SO,20
+Burundi,BI,21
+Sudan (North),SD,21
+Yemen,YE,21
+South Sudan,SS,22
+Central African Republic,CF,23
+Dem. Rep. of Congo,CD,24

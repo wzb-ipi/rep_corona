@@ -1,0 +1,129 @@
+Month,Country,Body,Date,Status
+January,Comoros,Parliament,January,Date not confirmed
+January,Taiwan,Parliament,1/11/2020,Date not confirmed
+January,Taiwan,President,1/11/2020,Date not confirmed
+January,Peru,Parliament,1/26/2020,Confirmed
+January,Comoros,Parliament,1/19/2020,Date not confirmed
+January,Tokelau,Parliament,January,
+January,Croatia,President Round 2,1/5/2020,Confirmed
+February,Saint Kitts and Nevis,Parliament,February,Date not confirmed
+February,Iran,Parliament,February,Date not confirmed
+February,Cameroon,Parliament,2/9/2020,Date not confirmed
+February,Guinea,Parliament,2/16/2020,Postponed
+February,Togo,President,2/22/2020,Confirmed
+February,Ireland,Parliament,2/8/2020,Confirmed
+February,Slovakia,Parliament,2/29/2020,Confirmed
+March,Slovakia,Parliament,March,Date not confirmed
+March,Vanuatu,Parliament,3/19/2020,Confirmed
+March,Guyana,Parliament,3/2/2020,Postponed
+March,Falkland Islands,Referendum,3/26/2020,Confirmed
+March,Tajikastan,Parliament,3/1/2020,Confirmed
+March,Tajikastan,Senate,3/27/2020,Confirmed
+March,Tajikastan,President,3/27/2020,Confirmed
+March,Israel,Parliament,3/2/2020,Confirmed
+March,Mali,Parliament,3/29/2020,Confirmed
+April,Armenia,Referendum,4/5/2020,Confirmed
+April,North Macedonia,Parliament,4/12/2020,Confirmed
+April,South Korea,Parliament,4/15/2020,Confirmed
+April,Mali,Parliament Round 2,4/19/2020,Confirmed
+April,Russia,Referendum,4/22/2020,Confirmed
+April,Kazakhstan,President,April,Date not confirmed
+April,Serbia,Parliament,4/26/2020,Confirmed
+April,Kiribati,Parliament,4/7/2020,Confirmed
+April,Kiribati,Parliament,4/15/2020,Confirmed
+April,Sri Lanka,Parliament,4/25/2020,Confirmed
+April,Syria,Parliament,4/13/2020,Confirmed
+May,Niue,Parliament,May,Date not confirmed
+May,Dominican Republic,Parliament,5/17/2020,Date not confirmed
+May,Dominican Republic,Senate,5/17/2020,Date not confirmed
+May,Dominican Republic,President,5/17/2020,Date not confirmed
+May,Suriname,Parliament,5/25/2020,Confirmed
+May,Burundi,President,5/20/2020,Confirmed
+May,Burundi,Senate,5/20/2020,Confirmed
+May,Burundi,Parliament,5/20/2020,Confirmed
+May,Cyprus,Parliament,May,Date not confirmed
+May,Poland,President,5/10/2020,Date not confirmed
+May,Poland,President Round 2,5/24/2020,Confirmed
+May,Ethiopia,Parliament,May,Date not confirmed
+May,Bolivia,President,5/3/2020,Confirmed
+May,Bolivia,Parliament,5/3/2020,Confirmed
+June,Mongolia,Parliament,6/20/2020,Date not confirmed
+June,Iceland,President,6/27/2020,Confirmed
+July,Burundi,Senate,7/20/2020,Date not confirmed
+July,Malawi,President,7/2/2020,Confirmed
+August,Belarus,President,8/30/2020,Date not confirmed
+August,Ethiopia,Parliament,8/29/2020,Confirmed
+September,Jordan,Parliament,September,Date not confirmed
+September,Hong Kong,Parliament,September,Date not confirmed
+September,Palau,Parliament,September,Date not confirmed
+September,Singapore,Parliament,September,Date not confirmed
+September,New Zealand,Parliament,,
+September,New Zealand,Referendum,,
+October,Lithuania,Parliament,10/11/2020,Confirmed
+October,Lithuania,Parliament,10/25/2020,Date not confirmed
+October,Cote d'Ivoire,Parliament,10/31/2020,Date not confirmed
+October,Cote d'Ivoire,President,10/31/2020,Date not confirmed
+October,Basque,Parliament,October,Date not confirmed
+October,Galicia,Parliament,October,Date not confirmed
+October,Montenegro,Parliament,October,Date not confirmed
+October,Kyrgyzstan,Parliament,10/4/2020,Confirmed
+October,Georgia,Parliament,October ,Date not confirmed
+October,Liberia,Senate,October,Date not confirmed
+November,USA,Parliament,11/3/2020,Confirmed
+November,USA,President,11/3/2020,Confirmed
+November,USA,Senate,11/3/2020,Confirmed
+November,Guam,NVD,11/3/2020,Confirmed
+November,Guam,Parliament,11/3/2020,Confirmed
+November,Puerto Rico,Governor ,11/3/2020,Confirmed
+November,Puerto Rico,Parliament,11/3/2020,Confirmed
+November,Puerto Rico,Senate,11/3/2020,Confirmed
+November,France,Senate,11/4/2020,
+November,Belize,Parliament,November ,Date not confirmed
+November,Burkina Faso,President,11/22/2020,Confirmed
+November,Burkina Faso,Parliament,11/22/2020,Confirmed
+November,Bukina Faso,Referendum,11/22/2020,Confirmed
+December,Croatia,Parliament,December,Date not confirmed
+December,Saint Vincent and the Grenadines,Parliament,December,Date not confirmed
+December,Romania,Senate,December,Date not confirmed
+December,Romania,Parliament,December,Date not confirmed
+December,Turks and Caicos,Parliament,December,Date not confirmed
+December,Central African Republic,Parliament,12/27/2020,Confirmed
+December,Niger,Parliament,December,Date not confirmed
+December,Ghana,Parliament,December,Date not confirmed
+,Azerbaijan,Parliament,,Date not confirmed
+,Egypt,Parliament,April-May (EAD),Date not confirmed
+,Gabon,Parliament,,Not confirmed
+,Ghana,President,Nov-Dec,Date not confirmed
+,Ghana,Parliament,Nov-Dec,Date not confirmed
+,Greece,President,,Date not confirmed
+,Guinea,President,,Date not confirmed
+,Iceland,President,,Not confirmed
+,Italy,President,,Date not confirmed
+,Kuwait,Parliament,,Date not confirmed
+,Kyrgyzstan,Parliament,,Date not confirmed
+,Liberia,Senate,,Date not confirmed
+,Macedonia,Parliament,,Date not confirmed
+,Moldova,President,,Date not confirmed
+,Moldova,President,,Not confirmed
+,Montenegro,Parliament,,Date not confirmed
+,Myanmar,REP,,Date not confirmed
+,Myanmar,Parliament,,Date not confirmed
+,North Macedonia,Parliament,,Date not confirmed
+,Palau,President,,Date not confirmed
+,Palau,Senate,,Date not confirmed
+,Palau,Parliament,,Date not confirmed
+,Serbia,Parliament,,Date not confirmed
+,Seychelles,President,,Date not confirmed
+,Singapore,Parliament,By  Jan 2021,Date not confirmed
+,Somalia,Parliament,,Date not confirmed
+,Sri Lanka,Parliament,,Date not confirmed
+,Sudan,President,,Date not confirmed
+,Syria,Parliament,,Not confirmed
+,Tajikistan,Parliament,,Date not confirmed
+,Tajikistan,President,,Date not confirmed
+,Tanzania,Parliament,,Date not confirmed
+,Tanzania,President,,Date not confirmed
+,Togo,President,,Date not confirmed
+,Trinidad and Tobago,Parliament,,Date not confirmed
+,Trinidad and Tobago,President,,Date not confirmed
+,Venezuela,Parliament,,Date not confirmed

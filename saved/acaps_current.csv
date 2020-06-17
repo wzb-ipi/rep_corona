@@ -1,0 +1,194 @@
+Country_name,ISO3,REGION,Measure_taxonomy,Measure_Category,SOURCE_TYPE,Enforcement_taxonomy,Log_type
+Afghanistan,AFG,Asia,Schools closure ,Social distancing,Government,Fines,Introduction / extension of measures
+Albania,ALB,Europe,Border checks ,Movement restrictions,Media,Arrest/Detention,Phase-out measure
+Algeria,DZA,Africa,Border closure ,Movement restrictions,UN,Deportation,NA
+Angola,AGO,Africa,Closure of businesses and public services,Social distancing,Other organisations,Refusal to enter the country,NA
+Antigua and Barbuda,ATG,Americas,Isolation and quarantine policies,Public health measures,Social media,Legal action,NA
+Argentina,ARG,Americas,Limit public gatherings,Social distancing,Other,Not applicable,NA
+Armenia,ARM,Asia,Economic measures,Governance and socio-economic measures,NA,Not available,NA
+Australia,AUS,Pacific,Awareness campaigns,Public health measures,NA,Other (add in comments),NA
+Austria,AUT,Europe,International flights suspension,Movement restrictions,NA,Up to detention,NA
+Azerbaijan,AZE,Asia,Health screenings in airports and border crossings,Public health measures,NA,NA,NA
+Bahamas,BHS,Americas,Emergency administrative structures activated or established,Governance and socio-economic measures,NA,NA,NA
+Bahrain,BHR,Middle East,Domestic travel restrictions,Movement restrictions,NA,NA,NA
+Bangladesh,BGD,Asia,Strengthening the public health system,Public health measures,NA,NA,NA
+Barbados,BRB,Americas,Limit product imports/exports,Governance and socio-economic measures,NA,NA,NA
+Belarus,BLR,Europe,Visa restrictions,Movement restrictions,NA,NA,NA
+Belgium,BEL,Europe,Checkpoints within the country,Movement restrictions,NA,NA,NA
+Belize,BLZ,Americas,State of emergency declared,Governance and socio-economic measures,NA,NA,NA
+Benin,BEN,Africa,Additional health/documents requirements upon arrival,Movement restrictions,NA,NA,NA
+Bhutan,BTN,Asia,Changes in prison-related policies,Social distancing,NA,NA,NA
+Bolivia,BOL,Americas,General recommendations,Public health measures,NA,NA,NA
+Bosnia and Herzegovina,BIH,Europe,Full lockdown,Lockdown,NA,NA,NA
+Botswana,BWA,Africa,Psychological assistance and medical social work,Public health measures,NA,NA,NA
+Brazil,BRA,Americas,Obligatory medical tests not related to COVID-19,Public health measures,NA,NA,NA
+Brunei Darussalam,BRN,Asia,Mass population testing,Public health measures,NA,NA,NA
+Bulgaria,BGR,Europe,Surveillance and monitoring,Movement restrictions,NA,NA,NA
+Burkina Faso,BFA,Africa,Lockdown of refugee/idp camps or other minorities,Lockdown,NA,NA,NA
+Burundi,BDI,Africa,Testing policy,Public health measures,NA,NA,NA
+Cabo Verde,CPV,Africa,Military deployment,Governance and socio-economic measures,NA,NA,NA
+Cambodia,KHM,Asia,Complete border closure,Movement restrictions,NA,NA,NA
+Cameroon,CMR,Africa,Curfews,Movement restrictions,NA,NA,NA
+Canada,CAN,Americas,Amendments to funeral and burial regulations,Public health measures,NA,NA,NA
+Central African Republic,CAF,Africa,Partial lockdown,Lockdown,NA,NA,NA
+Chad,TCD,Africa,Humanitarian exemptions,Humanitarian exemption,NA,NA,NA
+Chile,CHL,Americas,Requirement to wear protective gear in public,Public health measures,NA,NA,NA
+China,CHN,Asia,Other public health measures enforced,Public health measures,NA,NA,NA
+Colombia,COL,Americas,NA,NA,NA,NA,NA
+Comoros,COM,Africa,NA,NA,NA,NA,NA
+Congo,COG,Africa,NA,NA,NA,NA,NA
+Congo DR,COD,Africa,NA,NA,NA,NA,NA
+Costa Rica,CRI,Americas,NA,NA,NA,NA,NA
+Côte d'Ivoire,CIV,Africa,NA,NA,NA,NA,NA
+Croatia,HRV,Europe,NA,NA,NA,NA,NA
+Cuba,CUB,Americas,NA,NA,NA,NA,NA
+Cyprus,CYP,Europe,NA,NA,NA,NA,NA
+Czech Republic,CZE,Europe,NA,NA,NA,NA,NA
+Denmark,DNK,Europe,NA,NA,NA,NA,NA
+Djibouti,DJI,Africa,NA,NA,NA,NA,NA
+Dominica,DMA,Americas,NA,NA,NA,NA,NA
+Dominican Republic,DOM,Americas,NA,NA,NA,NA,NA
+Ecuador,ECU,Americas,NA,NA,NA,NA,NA
+Egypt,EGY,Africa,NA,NA,NA,NA,NA
+El Salvador,SLV,Americas,NA,NA,NA,NA,NA
+Equatorial Guinea,GNQ,Africa,NA,NA,NA,NA,NA
+Eritrea,ERI,Africa,NA,NA,NA,NA,NA
+Estonia,EST,Europe,NA,NA,NA,NA,NA
+Ethiopia,ETH,Africa,NA,NA,NA,NA,NA
+Fiji,FJI,Pacific,NA,NA,NA,NA,NA
+Finland,FIN,Europe,NA,NA,NA,NA,NA
+France,FRA,Europe,NA,NA,NA,NA,NA
+Gabon,GAB,Africa,NA,NA,NA,NA,NA
+Gambia,GMB,Africa,NA,NA,NA,NA,NA
+Georgia,GEO,Europe,NA,NA,NA,NA,NA
+Germany,DEU,Europe,NA,NA,NA,NA,NA
+Ghana,GHA,Africa,NA,NA,NA,NA,NA
+Greece,GRC,Europe,NA,NA,NA,NA,NA
+Grenada,GRD,Americas,NA,NA,NA,NA,NA
+Guatemala,GTM,Americas,NA,NA,NA,NA,NA
+Guinea,GIN,Africa,NA,NA,NA,NA,NA
+Guinea-Bissau,GNB,Africa,NA,NA,NA,NA,NA
+Guyana,GUY,Americas,NA,NA,NA,NA,NA
+Haiti,HTI,Americas,NA,NA,NA,NA,NA
+Honduras,HND,Americas,NA,NA,NA,NA,NA
+Hungary,HUN,Europe,NA,NA,NA,NA,NA
+Iceland,ISL,Europe,NA,NA,NA,NA,NA
+India,IND,Asia,NA,NA,NA,NA,NA
+Indonesia,IDN,Asia,NA,NA,NA,NA,NA
+Iran,IRN,Middle East,NA,NA,NA,NA,NA
+Iraq,IRQ,Middle East,NA,NA,NA,NA,NA
+Ireland,IRL,Europe,NA,NA,NA,NA,NA
+Israel,ISR,Middle East,NA,NA,NA,NA,NA
+Italy,ITA,Europe,NA,NA,NA,NA,NA
+Jamaica,JAM,Americas,NA,NA,NA,NA,NA
+Japan,JPN,Asia,NA,NA,NA,NA,NA
+Jordan,JOR,Middle East,NA,NA,NA,NA,NA
+Kazakhstan,KAZ,Asia,NA,NA,NA,NA,NA
+Kenya,KEN,Africa,NA,NA,NA,NA,NA
+Kiribati,KIR,Pacific,NA,NA,NA,NA,NA
+Korea DPR,PRK,Asia,NA,NA,NA,NA,NA
+Korea Republic of,KOR,Asia,NA,NA,NA,NA,NA
+Kuwait,KWT,Middle East,NA,NA,NA,NA,NA
+Kyrgyzstan,KGZ,Asia,NA,NA,NA,NA,NA
+Lao PDR,LAO,Asia,NA,NA,NA,NA,NA
+Latvia,LVA,Europe,NA,NA,NA,NA,NA
+Lebanon,LBN,Middle East,NA,NA,NA,NA,NA
+Lesotho,LSO,Africa,NA,NA,NA,NA,NA
+Liberia,LBR,Africa,NA,NA,NA,NA,NA
+Libya,LBY,Africa,NA,NA,NA,NA,NA
+Liechtenstein,LIE,Europe,NA,NA,NA,NA,NA
+Lithuania,LTU,Europe,NA,NA,NA,NA,NA
+Luxembourg,LUX,Europe,NA,NA,NA,NA,NA
+Madagascar,MDG,Africa,NA,NA,NA,NA,NA
+Malawi,MWI,Africa,NA,NA,NA,NA,NA
+Malaysia,MYS,Asia,NA,NA,NA,NA,NA
+Maldives,MDV,Asia,NA,NA,NA,NA,NA
+Mali,MLI,Africa,NA,NA,NA,NA,NA
+Malta,MLT,Europe,NA,NA,NA,NA,NA
+Marshall Islands,MHL,Pacific,NA,NA,NA,NA,NA
+Mauritania,MRT,Africa,NA,NA,NA,NA,NA
+Mauritius,MUS,Africa,NA,NA,NA,NA,NA
+Mexico,MEX,Americas,NA,NA,NA,NA,NA
+Micronesia,FSM,Pacific,NA,NA,NA,NA,NA
+Moldova Republic of,MDA,Europe,NA,NA,NA,NA,NA
+Mongolia,MNG,Asia,NA,NA,NA,NA,NA
+Montenegro,MNE,Europe,NA,NA,NA,NA,NA
+Morocco,MAR,Africa,NA,NA,NA,NA,NA
+Mozambique,MOZ,Africa,NA,NA,NA,NA,NA
+Myanmar,MMR,Asia,NA,NA,NA,NA,NA
+Namibia,NAM,Africa,NA,NA,NA,NA,NA
+Nauru,NRU,Pacific,NA,NA,NA,NA,NA
+Nepal,NPL,Asia,NA,NA,NA,NA,NA
+Netherlands,NLD,Europe,NA,NA,NA,NA,NA
+New Zealand,NZL,Pacific,NA,NA,NA,NA,NA
+Nicaragua,NIC,Americas,NA,NA,NA,NA,NA
+Niger,NER,Africa,NA,NA,NA,NA,NA
+Nigeria,NGA,Africa,NA,NA,NA,NA,NA
+Norway,NOR,Europe,NA,NA,NA,NA,NA
+Oman,OMN,Middle East,NA,NA,NA,NA,NA
+Pakistan,PAK,Asia,NA,NA,NA,NA,NA
+Palau,PLW,Pacific,NA,NA,NA,NA,NA
+Palestine,PSE,Middle East,NA,NA,NA,NA,NA
+Panama,PAN,Americas,NA,NA,NA,NA,NA
+Papua New Guinea,PNG,Pacific,NA,NA,NA,NA,NA
+Paraguay,PRY,Americas,NA,NA,NA,NA,NA
+Peru,PER,Americas,NA,NA,NA,NA,NA
+Philippines,PHL,Asia,NA,NA,NA,NA,NA
+Poland,POL,Europe,NA,NA,NA,NA,NA
+Portugal,PRT,Europe,NA,NA,NA,NA,NA
+Qatar,QAT,Middle East,NA,NA,NA,NA,NA
+Romania,ROU,Europe,NA,NA,NA,NA,NA
+Russian Federation,RUS,Europe,NA,NA,NA,NA,NA
+Rwanda,RWA,Africa,NA,NA,NA,NA,NA
+Saint Kitts and Nevis,KNA,Americas,NA,NA,NA,NA,NA
+Saint Lucia,LCA,Americas,NA,NA,NA,NA,NA
+Saint Vincent and the Grenadines,VCT,Americas,NA,NA,NA,NA,NA
+Samoa,WSM,Pacific,NA,NA,NA,NA,NA
+Sao Tome and Principe,STP,Africa,NA,NA,NA,NA,NA
+Saudi Arabia,SAU,Middle East,NA,NA,NA,NA,NA
+Senegal,SEN,Africa,NA,NA,NA,NA,NA
+Serbia,SRB,Europe,NA,NA,NA,NA,NA
+Seychelles,SYC,Africa,NA,NA,NA,NA,NA
+Sierra Leone,SLE,Africa,NA,NA,NA,NA,NA
+Singapore,SGP,Asia,NA,NA,NA,NA,NA
+Slovakia,SVK,Europe,NA,NA,NA,NA,NA
+Slovenia,SVN,Europe,NA,NA,NA,NA,NA
+Solomon Islands,SLB,Pacific,NA,NA,NA,NA,NA
+Somalia,SOM,Africa,NA,NA,NA,NA,NA
+South Africa,ZAF,Africa,NA,NA,NA,NA,NA
+South Sudan,SSD,Africa,NA,NA,NA,NA,NA
+Spain,ESP,Europe,NA,NA,NA,NA,NA
+Sri Lanka,LKA,Asia,NA,NA,NA,NA,NA
+Sudan,SDN,Africa,NA,NA,NA,NA,NA
+Suriname,SUR,Americas,NA,NA,NA,NA,NA
+Eswatini,SWZ,Africa,NA,NA,NA,NA,NA
+Sweden,SWE,Europe,NA,NA,NA,NA,NA
+Switzerland,CHE,Europe,NA,NA,NA,NA,NA
+Syria,SYR,Middle East,NA,NA,NA,NA,NA
+Tajikistan,TJK,Asia,NA,NA,NA,NA,NA
+Tanzania,TZA,Africa,NA,NA,NA,NA,NA
+Thailand,THA,Asia,NA,NA,NA,NA,NA
+North Macedonia Republic Of,MKD,Europe,NA,NA,NA,NA,NA
+Timor-Leste,TLS,Asia,NA,NA,NA,NA,NA
+Togo,TGO,Africa,NA,NA,NA,NA,NA
+Tonga,TON,Pacific,NA,NA,NA,NA,NA
+Trinidad and Tobago,TTO,Americas,NA,NA,NA,NA,NA
+Tunisia,TUN,Africa,NA,NA,NA,NA,NA
+Turkey,TUR,Middle East,NA,NA,NA,NA,NA
+Turkmenistan,TKM,Asia,NA,NA,NA,NA,NA
+Tuvalu,TUV,Pacific,NA,NA,NA,NA,NA
+Uganda,UGA,Africa,NA,NA,NA,NA,NA
+Ukraine,UKR,Europe,NA,NA,NA,NA,NA
+United Arab Emirates,ARE,Middle East,NA,NA,NA,NA,NA
+United Kingdom,GBR,Europe,NA,NA,NA,NA,NA
+United States of America,USA,Americas,NA,NA,NA,NA,NA
+Uruguay,URY,Americas,NA,NA,NA,NA,NA
+Uzbekistan,UZB,Asia,NA,NA,NA,NA,NA
+Vanuatu,VUT,Pacific,NA,NA,NA,NA,NA
+Venezuela,VEN,Americas,NA,NA,NA,NA,NA
+Viet Nam,VNM,Asia,NA,NA,NA,NA,NA
+Yemen,YEM,Middle East,NA,NA,NA,NA,NA
+Zambia,ZMB,Africa,NA,NA,NA,NA,NA
+Zimbabwe,ZWE,Africa,NA,NA,NA,NA,NA
+San Marino,SMR,Europe,NA,NA,NA,NA,NA
+"China, Hong Kong Special Administrative Region",HKG,Asia,NA,NA,NA,NA,NA

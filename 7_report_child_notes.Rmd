@@ -1,0 +1,27 @@
+---
+title: "6_report_note_child"
+author: "ipi"
+date: "4/2/2020"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+---
+```{r, echo = FALSE}
+if(Y == "deaths_cum_pmill"){
+dropped_countries <-   dropped_pc 
+} else {
+dropped_countries <-  dropped
+}
+
+```
+
+***Technical notes***
+
+Time varying graphs show coefficients from linear regressions of outcomes on variables of interest with separate models for each day. Robust standard errors and confidence intervals are calculated using `lm_robust`.  Headings report the `N` for the final day examined plus the partial adjusted $R^2$ for the variable in question. Larger countries dropped because of missing data in controls: `r paste(dropped_countries[-1], collapse = ", ")`.
+
+---

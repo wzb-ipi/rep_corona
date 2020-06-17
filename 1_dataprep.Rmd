@@ -1,0 +1,112 @@
+---
+title: "Correlates of COVID19, data compilation"
+author: ipi
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: "hide"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+check.packages <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg))
+    install.packages(new.pkg, dependencies = TRUE,
+                     repos = "https://cran.rstudio.com")
+  sapply(pkg, require, character.only = TRUE)
+}
+
+pkgList <- c("RCurl","WDI","readxl","httr","knitr","tidyverse",
+             "estimatr","stargazer","countrycode","dataverse",
+             "zip", "lubridate", "rvest", "fastDummies", "lfe",
+             "zoo","rvest","data.table", "pbapply", "xml2")
+
+check.packages(pkgList)
+
+```
+
+# Options
+
+Provide download options in this chunk.
+
+```{r}
+download <- list()
+download$corona_data      <- FALSE
+download$wdi_data         <- FALSE
+download$qog_data         <- FALSE
+download$jhu_data         <- FALSE
+download$polity_data      <- FALSE
+download$swiid_data       <- FALSE
+download$resp_data        <- FALSE
+download$popden_data      <- FALSE
+download$epr_data         <- FALSE
+download$who_data         <- FALSE
+download$weather_data     <- FALSE
+download$dpi_data         <- FALSE
+download$parlgov_data     <- FALSE
+download$wiki_data        <- FALSE
+download$ipu_data         <- FALSE
+download$iefs_data        <- FALSE
+download$mobility_data    <- FALSE
+download$stringency_data  <- FALSE
+
+# If `corona_data` is predefined in `0_master`, use this value
+if(exists("corona_data")) download$corona_data <- corona_data
+```
+
+
+# Get data
+
+Download data from public sources.
+
+```{r, child = "2_get_data.Rmd"}
+
+```
+
+# Transformations
+
+Merge datasets and rescale variables.
+
+```{r, child = "3_merge_transform.Rmd"}
+
+```
+
+Check most recent data date:
+
+```{r}
+data_date <- max(as.Date(df$date_rep), na.rm = TRUE)
+if( (df %>% filter(date_rep == data_date) %>% nrow()) <
+    (df %>% filter(date_rep == data_date-1) %>% nrow())) data_date <- data_date - 1
+
+data_date
+```
+
+# Export
+
+```{r}
+
+# Full data for download
+df_full <- df
+write.csv(df_full, "docs/df_full.csv")
+
+
+# Subset for analysis: Remove small population countries; China
+df <- filter(df, pop_tot >=1 & geoid2 != "CHN")
+write.csv(df, "saved/df.csv")
+```
+
+
+# Lasso
+
+Implement Lasso analyses to select control variables
+
+
+```{r, child = "4_lasso.Rmd", eval = T}
+
+```
+
+

@@ -1,0 +1,174 @@
+---
+title: "corona"
+author: ipi
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    code_folding: "hide"
+---
+
+```{r setuptransform, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+check.packages <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg))
+    install.packages(new.pkg, dependencies = TRUE,
+                     repos = "https://cran.rstudio.com")
+  sapply(pkg, require, character.only = TRUE)
+}
+
+pkgList <- c("RCurl","WDI","readxl","httr","knitr","tidyverse",
+             "estimatr","stargazer","countrycode","dataverse",
+             "zip", "lubridate", "rvest", "fastDummies", "lfe")
+
+check.packages(pkgList)
+
+```
+
+
+## Merge
+
+
+```{r, message = FALSE, warning = FALSE}
+wdi_region <- WDI::WDI_data$country %>% 
+  data.frame() %>% 
+  select(iso3c, region) %>%
+  rename("country_id" = "iso3c")
+
+df_wide <- read.csv("saved/corona_df.csv") %>% 
+  select(country_id, country) %>% 
+  distinct(country_id, country) %>% 
+  arrange(country_id) %>% 
+  left_join(wdi_region, by = "country_id")
+
+to_join <- c("wdi_df.csv", 
+             "pop_below14_df.csv", 
+             "polity4_df.csv", 
+             "swiid_df.csv", "eps_df.csv", "vdem_indexes_df.csv", 
+             "polarization_df.csv", "trust_people_df.csv", 
+             "trust_gov_df.csv", "populism_df.csv", "federalism_df.csv", 
+             "dpi_checks_df.csv", "electoral_pressure_df.csv", 
+             "gov_position_df.csv", "woman_leader_df.csv", 
+             "past_epidemics_df.csv", "median_age_df.csv", 
+             "qog_df.csv", "share_health_ins.csv", 
+             "pandemic_prep_df.csv", "pop_density_df.csv", 
+             "life_exp_df.csv", "respiratory_disease_df.csv", 
+             "ghsi_detect_df.csv", "ghsi_df.csv", "ghsi_health_df.csv", 
+             "ghsi_respond_df.csv","state_fragility_df.csv","pr_df.csv") 
+
+  print(c(nrow(df_wide)))
+
+  for(j in to_join){
+    df_wide <- left_join(df_wide, read.csv(paste0("saved/", j)), by = c("country_id"))
+  } 
+  
+  df_wide <- 
+    df_wide   %>%
+    mutate(share_older = 100*(older_m + older_f)/pop_tot, 
+         pop_tot = pop_tot/1000000,
+         pop_tot_log = log(pop_tot),
+         gdp_pc = gdp_pc/1000,
+         air_travel = log(1+air_travel),
+         pop_density_log = log(pop_density),
+         infection = ifelse(is.na(infection), 0, infection)
+         )  
+    
+write.csv(df_wide, "saved/df_wide.csv")
+
+print(dim(df_wide))
+```
+
+## Add time varying data
+
+```{r}
+corona    <- 
+  read.csv("saved/corona_df.csv")%>% mutate(date = as.Date(date))
+
+mobility  <- 
+  read.csv("saved/mobility_level_df.csv") %>% mutate(date = as.Date(date))
+
+weatherDF <- 
+  read.csv("saved/weather_df.csv")
+
+policyDF  <- 
+  read.csv("saved/acaps_df.csv") %>% mutate(date = as.Date(date))
+
+stringency  <- 
+  read.csv("saved/stringency_df.csv") %>% mutate(date = as.Date(date))
+
+df <- left_join(corona, select(df_wide, -country), by = c("country_id")) %>%
+  left_join(policyDF, by = c("country_id","date")) %>%
+  left_join(mobility, by = c("country_id","date")) %>%
+  left_join(stringency, by = c("country_id","date")) %>% 
+  left_join(weatherDF, by = c("country_id",  "year", "month"))   %>%
+  mutate(deaths_cum_per_million = deaths_cum/pop_tot,
+         deaths_cum_per_million_log = log(1 + deaths_cum_per_million),
+  )  %>% 
+  
+  rename(geoid2 = country_id)
+
+```
+
+
+## Combine timelines
+
+We make a version of the data that records number of deaths per million $T$ days after first hitting $D$ cases. Note currently data sparse so $T$ and $D$ low, and start benchmarked to cases rather than deaths.
+
+Create cumul deaths variable lagged to days since $D$ cases.
+
+```{r, message = FALSE, eval = TRUE}
+D <- 10
+T <- 10
+
+df <- df %>%
+  group_by(forcats::fct_explicit_na(geoid2)) %>%
+  mutate(relative_start =
+           ifelse(any(cases_cum >= D),
+                  min(elapsed[cases_cum >= D]), NA),
+         elapsed_rel = elapsed - relative_start) %>%
+  ungroup() %>%
+  group_by(forcats::fct_explicit_na(geoid2)) %>%
+  mutate(
+    relative_start_d = ifelse(any(deaths_cum >= D),
+                              min(elapsed[deaths_cum >= D]), NA),
+    elapsed_rel_d = elapsed - relative_start_d
+  ) %>%
+  ungroup()
+
+rm(D,T)
+
+```
+
+## Country name
+
+```{r}
+# Generate country name
+df <- df %>% 
+  mutate(country = countrycode(geoid2,
+                               origin = "iso3c",
+                               destination = "country.name")) %>% 
+  mutate(country = if_else(geoid2=="RKS", "Kosovo", country))
+
+```
+
+## Fill some missing variables down
+
+
+## Stringency index needs to be filled down (b/c missings)
+
+```{r}
+df <- df %>% 
+  arrange(geoid2, date) %>% 
+  group_by(geoid2) %>% 
+  fill(mobility_index, .direction = 'down')
+```
+
+
+# Clean duplicate variables resulted from merging
+```{r}
+df <- df %>% 
+  dplyr::select(-starts_with("X."))
+```

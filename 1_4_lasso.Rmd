@@ -1,0 +1,972 @@
+---
+title: "Lasso variable selection"
+output: 
+  html_document:
+    code_folding: "hide"
+    number_section: true
+---
+
+```{r setuplasso, include=FALSE}
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+
+check.packages <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg))
+    install.packages(new.pkg, dependencies = TRUE,
+                     repos = "https://cran.rstudio.com")
+  sapply(pkg, function(x) suppressMessages(require(x, character.only = TRUE)))
+}
+
+pkgList <- c("RCurl","WDI","readxl","httr","knitr","tidyverse",
+             "estimatr","stargazer","countrycode","dataverse",
+             "zip", "lubridate", "rvest", "fastDummies", "lfe",
+             "directlabels", "kableExtra", "ggrepel", "pscl",
+             "glmnet")
+
+check.packages(pkgList)
+
+source('code/add_linebreak.R')
+
+## Set number of folds
+
+nfolds = 5
+
+## Drop covars with proportion missing greater than
+
+missing_threshold <- 0.15
+
+
+```
+
+## Bring in data
+
+```{r}
+df  <- read.csv("saved/df.csv") %>% 
+  mutate(date = as.Date(date),
+         date_rep = as.Date(date_rep))
+
+#### Stringency and mobility need to be averaged
+
+df <- df %>% 
+  group_by(geoid2) %>% 
+  mutate_at(vars(stringency, mobility_index),
+            list(~mean(., na.rm = T))) %>% 
+  ungroup()
+
+#### Lockdown and distancing: use last non-missing
+
+df <- df %>% 
+  group_by(geoid2) %>% 
+  arrange(date) %>% 
+  fill(lockdown_bin, distancing_bin, .direction = 'down') %>% 
+  ungroup()
+
+```
+
+## Lasso function usimg `glmnet`
+
+```{r}
+results_lasso <- function(Y,
+                          X,
+                          data = df,
+                          standardize = TRUE,
+                          impute_mean = TRUE,
+                          impute_extreme_outliers = F,
+                          nfolds = 5,
+                          test_prop = 0.2,
+                          seed_train_test_split = NULL,
+                          use_logit_if_outcome_binary = F,
+                          use_most_recent_date = T,
+                          freeze_date = "2020-05-14",
+                          use_lambda_min = T) {
+  
+  ## Select date (days since Jan 1)
+  
+  if (use_most_recent_date) {
+    
+    data_date <- max(as.Date(df$date_rep), na.rm = TRUE)
+    
+    if((df %>% filter(date_rep == data_date) %>% nrow()) <
+       (df %>% filter(date_rep == data_date-1) %>% nrow())) data_date <- data_date - 1
+    
+    mod_df <- df %>% filter(date == data_date)
+  } else {
+    mod_df <- data %>% filter(date == as.Date(freeze_date))
+  }
+  
+  ## Imputation
+  
+  if (impute_mean) {
+    mod_df <- mod_df %>% 
+      mutate_at(vars(one_of(X)), list(~ifelse(is.na(.), mean(., na.rm = T),
+                                              .)))
+  }
+  
+  ## Non-missing obs
+  
+  mod_df <- mod_df[complete.cases(mod_df[, c(Y, X)]), ] %>% 
+    dplyr::select(country, geoid2, one_of(c(X, Y)))
+  
+   ## Impute zero for extreme outliers
+  
+  if (impute_extreme_outliers) {
+    mod_df <- mod_df %>% 
+      mutate_at(vars(one_of(X)), 
+                list(~ifelse(abs(. /sd(., na.rm = T)) > 10, mean(., na.rm = T), .)))
+  }
+  
+  ## Scaling
+  
+  if (standardize) {
+    mod_df <- 
+      mod_df %>% 
+      mutate_at(vars(one_of(X)), list(~(.-mean(.)) / sd(.)))
+  }
+  
+  ## Get test/ train split
+  ## Optional seed
+  
+  if (!is.null(seed_train_test_split)) {
+    if (!is.numeric(seed_train_test_split)) stop('Seed must be numeric')
+    
+    set.seed(seed_train_test_split)
+    
+  }
+  
+  
+  
+  test_id <- sample(1:nrow(mod_df), floor(nrow(mod_df) * test_prop))
+
+  ## Model
+  
+  x_train = mod_df[-test_id, X] %>% as.matrix()
+  y_train = mod_df[-test_id, Y] %>% pull(!!Y) %>% as.numeric()
+  
+  ## Model
+  
+  x_test = mod_df[test_id, X] %>% as.matrix()
+  y_test = mod_df[test_id, Y] %>% pull(!!Y) %>% as.numeric()
+  
+  ## If binary, do logistic instead
+  
+  if ((length(unique(y_train)) == 2) & use_logit_if_outcome_binary) {
+    
+    cv <- cv.glmnet(x = x_train, y = y_train,
+                   nfolds = nfolds,
+                   alpha = 1,
+                   family = 'binomial',
+                   type.measure = 'auc') # Fit lasso
+    
+    ## 
+    
+    if (use_lambda_min) {
+      lambda_use <- cv$lambda.min
+    } else {
+      lambda_use <- cv$lambda.1se
+    }
+    
+    
+    lasso_mod <- glmnet(x_train, 
+                       y_train, 
+                       alpha = 1, 
+                       lambda = lambda_use,
+                       family = 'binomial') # Fit lasso model on training data
+
+  } else {
+    
+    # Fit lasso
+    cv <- cv.glmnet(x = x_train, y = y_train, nfolds = nfolds, alpha = 1) 
+    
+    if (use_lambda_min) {
+      lambda_use <- cv$lambda.min
+    } else {
+      lambda_use <- cv$lambda.1se
+    }
+
+    # Fit lasso model on training data
+    lasso_mod <- glmnet(x_train, y_train, alpha = 1, lambda = lambda_use) 
+    
+  }
+  
+  lasso_coef <- coef(lasso_mod) %>% as.matrix() %>% 
+    data.frame(vars = row.names(.), coef = ., stringsAsFactors = F) %>% 
+    rename(coef = 2)
+  
+  y_hat_train = predict(lasso_mod, s = lambda_use, 
+                        newx = x_train) %>% 
+    as.numeric() # Use best lambda to predict test data
+  y_hat_test = predict(lasso_mod, s = lambda_use, 
+                        newx = x_test) %>% 
+    as.numeric() # Use best lambda to predict test data
+  
+  ## Return
+  
+  pred_list <- data.frame(y = y_train, y_hat = as.numeric(y_hat_train), 
+                          stringsAsFactors = F) %>% 
+    bind_cols(data.frame(country = as.character(mod_df$country[-test_id]), 
+                         stringsAsFactors = F))%>% 
+    bind_cols(data.frame(geoid2 = as.character(mod_df$geoid2[-test_id]), 
+                         stringsAsFactors = F))
+
+  ## Get RMSE for the full se and from CV
+  
+  rmse_train <- sqrt(mean((y_hat_train - y_train)^2))
+  rmse_test <- sqrt(mean((y_hat_test - y_test)^2))
+  r2_train <- 1 - (sum((y_train - y_hat_train)^2) / sum((y_train - mean(y_train))^2))
+  r2_test <- 1 - (sum((y_test - y_hat_test)^2) / sum((y_test - mean(y_train))^2))
+
+  ## RMSE from an empty model
+  ## We use the mean of the y_train here twice, since the prediction from the training data is always the training mean
+  ## this the case for in-sample and out sample prediction
+  
+  rmse_empty_train <- sqrt(mean((y_train - mean(y_train, na.rm = T))^2))
+  rmse_empty_test <- sqrt(mean((y_test - mean(y_train, na.rm = T))^2))
+  r2_empty_train <-  0
+  r2_empty_test <- 0
+  
+  ## Add to lcoef
+  
+  lasso_coef <- lasso_coef %>% 
+    mutate(rmse_train = rmse_train,
+           rmse_test = rmse_test,
+           rmse_empty_train = rmse_empty_train,
+           rmse_empty_test = rmse_empty_test,
+           r2_train = r2_train,
+           r2_test = r2_test,
+           r2_empty_test = r2_empty_test,
+           r2_empty_train = r2_empty_train)
+  
+  ## Add to LASSO coef
+  
+  out <- pred_list %>% 
+    mutate(outcome = Y) %>% 
+    mutate(n_pred = length(X)) %>% 
+    mutate(n = n())
+  list('output' = out, 'coefs' = lasso_coef)
+}
+```
+
+## Prep arguments | select measures to include
+
+```{r, message = FALSE}
+
+
+## Def outcomes
+
+Y_list <- c('deaths_cum_log',
+            'deaths_cum_per_million_log')
+Y_labels = c('Deaths total (logged)',
+             'Deaths/million (logged)')
+
+## Def additional outcomes
+
+Y_list_additional <- c('stringency', 'mobility_index',
+                       'lockdown_bin', 'distancing_bin')
+Y_labels_additional <- c('Policy stringency index', 'Mobility index',
+                         'Lockdown', 'Distancing measures')
+
+## Combined
+
+Y_list_full <- c(Y_list, Y_list_additional)
+Y_labels_full <- c(Y_labels, Y_labels_additional)
+
+## ##
+
+bla <- df %>% 
+  group_by(date) %>% 
+  summarise_at(vars(Y_list_full), ~sum(!is.na(.)) / n()) %>% 
+  mutate(date = as.Date(date)) %>% 
+  pivot_longer(cols = -'date', names_to = 'what', values_to = 'value') %>% 
+  data.frame(stringsAsFactors = F) %>% 
+  ggplot(aes(date, value), group = 1) +
+  geom_line() +
+  ylab('Share valid (not missing) obs') +
+  facet_wrap(~what)
+bla
+```
+
+
+```{r, message = FALSE}
+
+## Declare families
+
+families <- c('econ_vars',
+              'epi_vars',
+              'phys_vars',
+              'health_sys_vars')
+polfamilies <- c('state_cap_vars', 'social_vars', 'pol_account_vars')
+
+## Political and social variables
+
+measures_pol <- read_csv('measures.csv') %>%
+  filter(!vars %in% c('cases', 'deaths')) %>% 
+  filter(family %in% polfamilies) %>% 
+  filter(vars %in% colnames(df)) %>% 
+  pull(vars) %>% unique() %>% 
+  .[!str_detect(., 'sanitation')]
+
+## Drop vars based on missing
+
+miss_share_pol <- sapply(measures_pol, function(x) sum(is.na(df[, x])) / nrow(df))
+measures_pol <- measures_pol[!miss_share_pol > missing_threshold] %>% 
+  unique()
+
+## Get the table
+
+measures <- read_csv('measures.csv') %>%
+  filter(!vars %in% c('cases', 'deaths')) %>% 
+  filter(family %in% families) %>% 
+  filter(vars %in% colnames(df)) %>% 
+  pull(vars) %>% unique() %>% 
+  .[!str_detect(., 'sanitation')]
+
+## Drop vars based on missing
+
+miss_share <- sapply(measures, function(x) sum(is.na(df[, x])) / nrow(df))
+measures <- measures[!miss_share > missing_threshold] %>% 
+  unique()
+
+## Save this
+
+write_rds(measures, 'saved/lasso_control_set.rds')
+```
+
+## Implement LASSO
+
+This is used to select controls for the paper. Therefore, we first run LASSO for May 1 2020.
+
+```{r, message = FALSE}
+
+Y = Y_list_full[1]
+
+lcoef <- lapply(Y_list_full, function(Y) {
+  print(Y)
+
+  ## Define data set (no missings)
+  lasso_data <- df[complete.cases(df[, unique(c(Y, measures_pol, measures))]), ]
+  
+  ## The seed is for the train/test split
+  ## T-T split happens inside the function
+  set.seed(123)
+  
+  results_lasso(Y = Y, X = measures,
+                data = lasso_data, nfolds = nfolds,
+                use_most_recent_date = F, impute_extreme_outliers = T)[[2]] %>% 
+    mutate(outcome = Y)
+  
+}) %>% 
+  
+  reduce(rbind) %>% 
+  
+  left_join(data.frame(Y_list_full, Y_labels_full, stringsAsFactors = FALSE), 
+            by = c('outcome' = 'Y_list_full')) %>% 
+  filter(!str_detect(vars, 'Intercept')) %>% 
+  left_join(read_csv('measures.csv') %>% 
+              dplyr::select(vars,labels) %>% 
+              mutate(labels = str_remove(labels, '\\.'))) %>% 
+  filter((!coef == 0) & (outcome %in% Y_list_full)) %>% 
+  mutate(labels = str_remove(labels, '\\.'))
+
+## Line breaks for labels
+
+lcoef$labels <- sapply(lcoef$labels, add_linebreak, min_length = 10)
+
+## Lasso for 1-7
+
+set.seed(123)
+
+lcoef_pol <-   lapply(Y_list_full, function(Y) {
+  ## Define data set (no missings)
+  lasso_data <- df[complete.cases(df[, unique(c(Y, measures_pol, measures))]), ]
+  
+  ## The seed is for the train/test split
+  ## T-T split happens inside the function
+  set.seed(123)
+  
+  results_lasso(Y = Y, X = unique(c(measures_pol, measures)),
+                data = lasso_data, nfolds = nfolds,
+                use_most_recent_date = F, impute_extreme_outliers = T)[[2]] %>% 
+    mutate(outcome = Y)
+  
+}) %>% reduce(rbind) %>% 
+  left_join(data.frame(Y_list_full, Y_labels_full, stringsAsFactors = F), 
+            by = c('outcome' = 'Y_list_full')) %>% 
+  filter(!str_detect(vars, 'Intercept')) %>% 
+  left_join(read_csv('measures.csv') %>% dplyr::select(vars,labels) %>% 
+              mutate(labels = str_remove(labels, '\\.'))) %>% 
+  mutate(pol_soc = ifelse((vars %in% measures_pol) & 
+                            (!vars %in% measures), 'Yes', 'No')) %>% 
+  filter((!coef == 0) & (outcome %in% Y_list_full)) %>% 
+  mutate(labels = str_remove(labels, '\\.'))
+
+## Line breaks for labels
+
+lcoef_pol$labels <- sapply(lcoef_pol$labels, add_linebreak, min_length = 10)
+
+```
+
+## Saving 
+
+```{r}
+
+write_rds(list(
+  'lcoef_controls' = lcoef %>%  group_by(outcome) %>% 
+    filter(!duplicated(vars)) %>% ungroup(), 
+  'lcoef_pol' = lcoef_pol %>%  group_by(outcome) %>% 
+    filter(!duplicated(vars)) %>% ungroup()), 
+   path = 'saved/lasso_res.rds')
+
+```
+
+## Lasso for the most recent date
+
+```{r, message = FALSE}
+
+## Set number of folds
+
+nfolds = 5
+
+lcoef <- lapply(Y_list_full, function(Y) {
+  print(Y)
+
+  ## Define data set (no missings)
+  lasso_data <- df[complete.cases(df[, unique(c(Y, measures_pol, measures))]), ]  
+  ## The seed is for the train/test split
+  ## T-T split happens inside the function
+  set.seed(123)
+  
+  results_lasso(Y = Y, 
+                X = measures,
+                data = lasso_data, 
+                nfolds = nfolds,
+                use_most_recent_date = T,
+                use_lambda_min = T,
+                impute_extreme_outliers = T)[[2]] %>% 
+    mutate(outcome = Y)
+  
+}) %>% 
+  
+  reduce(rbind) %>% 
+  
+  left_join(data.frame(Y_list_full, Y_labels_full, stringsAsFactors = FALSE), 
+            by = c('outcome' = 'Y_list_full')) %>% 
+  filter(!str_detect(vars, 'Intercept')) %>% 
+  left_join(read_csv('measures.csv') %>% 
+              dplyr::select(vars,labels) %>% 
+              mutate(labels = str_remove(labels, '\\.'))) %>% 
+  filter((!coef == 0) & (outcome %in% Y_list_full)) %>% 
+  mutate(labels = str_remove(labels, '\\.'))
+
+## Line breaks for labels
+
+lcoef$labels <- sapply(lcoef$labels, add_linebreak, min_length = 10)
+
+## Lasso for 1-7
+
+lcoef_pol <-   lapply(Y_list_full, function(Y) {
+  ## Define data set (no missings)
+  lasso_data <- df[complete.cases(df[, unique(c(Y, measures_pol, measures))]), ]  
+  ## The seed is for the train/test split
+  ## T-T split happens inside the function
+  set.seed(123)
+  
+  results_lasso(Y = Y, 
+                X = unique(c(measures_pol, measures)),
+                data = lasso_data, 
+                nfolds = nfolds,
+                use_most_recent_date = T,
+                use_lambda_min = T,
+                impute_extreme_outliers = T)[[2]] %>% 
+    mutate(outcome = Y)
+  
+}) %>% reduce(rbind) %>% 
+  left_join(data.frame(Y_list_full, Y_labels_full, stringsAsFactors = F), 
+            by = c('outcome' = 'Y_list_full')) %>% 
+  filter(!str_detect(vars, 'Intercept')) %>% 
+  left_join(read_csv('measures.csv') %>% dplyr::select(vars,labels) %>% 
+              mutate(labels = str_remove(labels, '\\.'))) %>% 
+  mutate(pol_soc = ifelse((vars %in% measures_pol) & 
+                            (!vars %in% measures), 'Yes', 'No')) %>% 
+  filter((!coef == 0) & (outcome %in% Y_list_full)) %>% 
+  mutate(labels = str_remove(labels, '\\.'))
+
+## Line breaks for labels
+
+lcoef_pol$labels <- sapply(lcoef_pol$labels, add_linebreak, min_length = 10)
+
+```
+
+
+## Graphing Lasso output
+
+```{r plot MSEs from lasso}
+
+## Plots only for the deaths outcome 
+
+plot_df <- lcoef %>% 
+  filter(outcome %in% Y_list) %>% 
+  distinct(Y_labels_full, .keep_all = T) %>% 
+  dplyr::select(Y_labels_full, rmse_test, rmse_train, rmse_empty_train,
+                rmse_empty_test) %>% 
+  mutate(ss = 'Correlates from families 4-7') %>% 
+  pivot_longer(cols = c('rmse_test', 'rmse_train', 'rmse_empty_train', 'rmse_empty_test'), 
+               names_to = 'rmse_type') %>% 
+  mutate(rmse_type = dplyr::recode(rmse_type,
+                                   `rmse_empty_train` = 'In-sample MSE (empty model)',
+                                   `rmse_empty_test` = 'Out-of-sample MSE (empty model)',
+                                   `rmse_train` = 'In-sample MSE',
+                                   `rmse_test` = 'Out-of-sample MSE'))
+
+plot_df2 <- lcoef_pol %>% 
+  filter(outcome %in% Y_list) %>% 
+  distinct(Y_labels_full, .keep_all = T) %>% 
+  dplyr::select(Y_labels_full, rmse_test, rmse_train, rmse_empty_train,
+                rmse_empty_test) %>% 
+  mutate(ss = 'Correlates from all families')  %>% 
+  pivot_longer(cols = c('rmse_test', 'rmse_train', 'rmse_empty_train', 'rmse_empty_test'), 
+               names_to = 'rmse_type') %>% 
+  mutate(rmse_type = dplyr::recode(rmse_type,
+                                   `rmse_empty_train` = 'In-sample RMSE (empty model)',
+                                   `rmse_empty_test` = 'Out-of-sample RMSE (empty model)',
+                                   `rmse_train` = 'In-sample RMSE',
+                                   `rmse_test` = 'Out-of-sample RMSE'))
+
+## Combine DF for plot
+
+combined_df <- rbind(plot_df, plot_df2) %>% 
+  mutate(ss = ifelse(str_detect(rmse_type, 'empty'), 'Empty model', ss)) %>% 
+  mutate(rmse_type = str_remove(rmse_type, ' \\(empty model\\)'))
+
+pd <- position_dodge(0.4)
+
+p1 <- ggplot(combined_df,
+             aes(rmse_type, value, group = ss))+
+  geom_point(aes(fill = ss, shape = ss), position = pd, size = 2) +
+  facet_wrap(~Y_labels_full, scales = 'free_x') +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank()) +
+  theme(legend.position = 'bottom') +
+  xlab('') + coord_flip() +
+  scale_shape_manual(values = c(21, 21, 22), 
+                    name = '') +
+  scale_fill_manual(values = c('White', 'Black', 'grey70'), 
+                    name = '') +
+  ylab('Root mean square error') +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_y_continuous(limits = c(0,NA))
+# p1
+
+```
+
+```{r plot coefs from lasso}
+## Plot
+
+new_order <- lcoef %>% 
+  filter(outcome %in% Y_list) %>% 
+  group_by(Y_labels_full) %>% 
+  do(data_frame(al=levels(reorder(interaction(.$Y_labels_full,
+                                              .$labels,
+                                              drop=TRUE),
+                                  .$coef)))) %>% 
+  pull(al)
+
+p1 <- ggplot(lcoef %>% 
+               filter(outcome %in% Y_list) %>% 
+               mutate(al=factor(interaction(Y_labels_full, 
+                                            labels), 
+                                levels=new_order)),  
+             aes(x = al, y = coef)) +
+  geom_point(shape = 21, size = 2) +   
+  geom_hline(yintercept = 0, linetype = 'dotted') +
+  ylab('Coefficient') + 
+  xlab('') +
+  coord_flip() +
+  facet_wrap(~ Y_labels_full, scales = 'free') +
+  scale_x_discrete(breaks= new_order, labels=gsub("^.*\\.", "", new_order)) +
+  theme_bw()
+p1
+
+ggsave('figs/lasso_coef_nopol.pdf', width = 8, height = 4.5)
+
+
+## Plot
+
+new_order <- lcoef_pol %>% 
+  filter(outcome %in% Y_list) %>% 
+  group_by(Y_labels_full) %>% 
+  do(data_frame(al=levels(reorder(interaction(.$Y_labels_full,
+                                              .$labels,
+                                              drop=TRUE),
+                                  .$coef)))) %>% 
+  pull(al)
+
+## ## ##
+
+p1 <- ggplot(lcoef_pol %>%   
+               filter(outcome %in% Y_list) %>% 
+               mutate(al=factor(interaction(Y_labels_full, 
+                                            labels), 
+                                levels=new_order)),  
+             aes(x = al, y = coef, fill = pol_soc)) +
+  geom_point(aes(fill = pol_soc), shape = 21, size = 2) +   
+  geom_hline(yintercept = 0, linetype = 'dotted') +
+  ylab('Coefficient') + 
+  xlab('') +
+  coord_flip() +
+  facet_wrap(~ Y_labels_full, scales = 'free') +
+  scale_fill_manual(values = c('White', 'Black'), 
+                    name = 'State capacity / political / social') + 
+  scale_x_discrete(breaks= new_order, labels=gsub("^.*\\.", "", new_order)) +
+  theme_bw() + theme(panel.grid.major = element_blank()) +
+  theme(legend.position = 'bottom')
+p1
+
+ggsave('figs/lasso_coef_pol.pdf', width = 8, height = 6)
+
+```
+
+## MC simulations for different test/train sets
+
+Our Lasso procedure is as follows: 
+
+1. We split the sample into train and test sets, such that we obtain two outcome vectors $Y^\text{test}$ and $Y^\text{train}$, as well as corresponding input matrices $X^\text{test}$ and $X^\text{train}$. The predictors that enter the model are either all predictors, or predictors from families 4--7.The original data set is split such that 20% of all observations are in the test set, and 80% of all observations in the train set.
+
+2. We use the training set to determine the optimal shrinkage parameter $\lambda$. This is done using 5-fold cross validation. We then choose the parameter $\lambda^\text{Opt}$ that minimizes the average out-of-sample RMSE across the five folds. This step is done without using the test set at all.
+
+3. We then estimate a Lasso model using $Y^\text{train}$ and $X^\text{train}$, based on the previously determined shrinkage parameter $\lambda^\text{Opt}$. This gives us the predicted values $\hat{Y}^\text{train}$. We can then calculate the in-sample RMSE based on the difference between the fitted values $\hat{Y}^\text{train}$ and the true values $Y^\text{train}$. 
+
+4. Since we now have the model from step 3, we can predict the outcome for the test set using the input matrix $X^\text{test}$. This gives us the predicted values $\hat{Y}^\text{test}$. We then calculate $\text{RMSE}(Y^\text{test},  \hat{Y}^\text{test})$
+
+5. In addition to the two quantities described above, we also estimate RMSEs from 'empty' models, i.e. models that do not include any covariates. For these models, the predicted values are simply the in-sample mean of the outcomes. 
+
+The exact definitions for all RMSE quantities are as follows
+
+* In-sample RMSE: $\sqrt{\frac{1}{n_\text{train}}\sum_{i=1}^{n_\text{train}}(\hat{Y}_i^\text{train} - Y_i^\text{train})^2}$
+* Out-of-sample RMSE: $\sqrt{\frac{1}{n_\text{test}}\sum_{i=1}^{n_\text{test}}(\hat{Y}_i^\text{test} - Y_i^\text{test})^2}$
+* In-sample empty model RMSE $\sqrt{\frac{1}{n_\text{train}}\sum_{i=1}^{n_\text{train}}(\hat{Y}_i^\text{train} - \bar{Y}^\text{train})^2}$
+* Out-of-sample empty model RMSE $\sqrt{\frac{1}{n_\text{test}}\sum_{i=1}^{n_\text{test}}(\hat{Y}_i^\text{test} - \bar{Y}^\text{train})^2}$
+
+We conduct the above stepts for two differents sets of explanatory variables. First, we use all covariates from families 4, 5, 6 and 7. This set excludes variables which fall under the social, political or state capacity categories. Second, we go through the above steps with the full set of predictors, which includes predictors from all seven variable families.
+
+Since we split the sample into training and test sets, our Lasso procedure has a stochastic component. To make sure the results are not driven by one specific split between test and training sets, we instead execute the procedure for 100 randomly chosen test-train splits. For all RMSEs, we therefore end up with 100 different values based on the 100 train-test splits. When presenting RMSE results, we show the mean RMSE, as well as intervals that include all values from the 0.025 to the 0.975 quantiles. 
+
+
+```{r results-across-splits setup, eval=T}
+
+lasso_df <- df[complete.cases(df[, unique(c(Y_list_full, measures_pol, measures))]), ] %>% 
+  filter(elapsed == max(elapsed, na.rm = T))
+
+fun_repl <- function(seed_tt, lasso_data) {
+
+  nfolds = 5
+  
+  lcoef <- lapply(Y_list_full, function(Y_use) {
+    results_lasso(Y = Y_use, X = measures,
+                  data = lasso_data, nfolds = nfolds, 
+                  seed_train_test_split = seed_tt,
+                  use_most_recent_date = T,
+                  use_lambda_min = T,
+                  impute_extreme_outliers = T)[[2]] %>% 
+      mutate(outcome = Y_use)}) %>% 
+    reduce(rbind) %>% 
+    left_join(data.frame(Y_list_full, Y_labels_full, stringsAsFactors = FALSE), 
+              by = c('outcome' = 'Y_list_full')) %>% 
+    filter(!str_detect(vars, 'Intercept')) %>% 
+    distinct(outcome, .keep_all = T) %>% 
+    dplyr::select(Y_labels_full, rmse_train, rmse_test, rmse_empty_test,
+                  rmse_empty_train) %>% 
+    mutate(vars = 'Base')
+  
+  ## Lasso for 1-7
+  
+  lcoef_pol <-   lapply(Y_list_full, function(Y_use) {
+    
+    results_lasso(Y = Y_use, X = unique(c(measures_pol, measures)),
+                  data = lasso_data, nfolds = nfolds, 
+                  seed_train_test_split = seed_tt,
+                  use_most_recent_date = T,
+                  use_lambda_min = T,
+                  impute_extreme_outliers = T)[[2]] %>% 
+      mutate(outcome = Y_use)
+  }) %>% reduce(rbind) %>% 
+    left_join(data.frame(Y_list_full, Y_labels_full, stringsAsFactors = FALSE), 
+              by = c('outcome' = 'Y_list_full')) %>% 
+    filter(!str_detect(vars, 'Intercept')) %>% 
+    distinct(outcome, .keep_all = T) %>% 
+    dplyr::select(Y_labels_full, rmse_train, rmse_test, rmse_empty_test,
+                  rmse_empty_train) %>% 
+    mutate(vars = 'Base + Political')
+  
+  ## Combine
+  
+  rbind(lcoef_pol, lcoef) %>% 
+    mutate(sim_seed = seed_tt)
+} 
+
+```
+
+```{r results-across-splits do, eval=T}
+
+n_it = 100
+
+out <- pbapply::pblapply(1:n_it, function(i) fun_repl(seed_tt = i, 
+                                                      lasso_data = lasso_df))
+
+## Clean up output for plotting 
+
+out_df <- out %>% 
+  reduce(rbind) %>% 
+  pivot_longer(cols = matches('rmse'), names_to = "rmse_type") %>% 
+  mutate(value = value^2) %>% 
+  group_by(Y_labels_full, vars, rmse_type) %>% 
+  summarise_at(vars(matches('value')),
+               list(m = ~mean(.), 
+                    lo = ~quantile(., 0.025), 
+                    hi = ~quantile(., 0.975)))  %>% 
+  mutate(rmse_type = dplyr::recode(rmse_type,
+                                   `rmse_empty_train` = 'In-sample MSE (empty model)',
+                                   `rmse_empty_test` = 'Out-of-sample MSE (empty model)',
+                                   `rmse_train` = 'In-sample MSE',
+                                   `rmse_test` = 'Out-of-sample MSE')) %>% 
+  mutate(ss = ifelse(str_detect(vars, 'Political'), 
+                     'Correlates from all families',
+                     'Correlates from families 4-7'))%>% 
+  mutate(ss = ifelse(str_detect(rmse_type, 'empty'), 'Empty model', ss)) %>% 
+  mutate(rmse_type = str_remove(rmse_type, ' \\(empty model\\)'))
+
+
+```
+
+```{r results-across-splits plot-1, eval=T}
+pd <- position_dodge(0.4)
+
+p1 <- ggplot(out_df,
+             aes(rmse_type, m, group = ss))+
+  geom_errorbar(aes(color = ss, ymin = lo, ymax = hi), 
+                position = pd, width = 0) +
+  geom_point(aes(fill = ss, shape = ss), position = pd, size = 2) +
+  facet_wrap(~Y_labels_full, scales = 'free_x') +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank()) +
+  theme(legend.position = 'bottom') +
+  xlab('') + coord_flip() +
+  scale_shape_manual(values = c(21, 21, 22), 
+                    name = '') +
+  scale_fill_manual(values = c('grey40', 'Black', 'grey70'), 
+                    name = '') +
+  scale_color_manual(values = c('grey40', 'Black', 'grey70'), 
+                    name = '') +
+  ylab('MSE') +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_y_continuous(limits = c(0,NA))
+p1
+
+## Save this
+
+ggsave('figs/lasso_rmse.pdf', width = 6.5, height = 4)
+
+```
+
+
+## Relative MSE
+
+```{r results-across-splits plot-2, eval=T}
+
+## This converts RMSE to MSE
+
+out_df_rel <- out %>% 
+  reduce(rbind) %>% 
+  pivot_longer(cols = matches('rmse'), names_to = "rmse_type") %>% 
+  mutate(value = value^2) %>% 
+  mutate(rmse_type = dplyr::recode(rmse_type,
+                                   `rmse_empty_train` = 'In-sample prediction (empty model)',
+                                   `rmse_empty_test` = 'Out-of-sample prediction (empty model)',
+                                   `rmse_train` = 'In-sample prediction',
+                                   `rmse_test` = 'Out-of-sample prediction')) %>% 
+  mutate(ss = ifelse(str_detect(vars, 'Political'), 
+                     'Correlates from all families',
+                     'Correlates from families 4-7'))%>% 
+  mutate(ss = ifelse(str_detect(rmse_type, 'empty'), 'Empty model', ss)) %>% 
+  mutate(rmse_type = str_remove(rmse_type, ' \\(empty model\\)')) %>% 
+  filter(!(vars == 'Base' & ss == 'Empty model')) %>% 
+  dplyr::select(-vars) %>% 
+  arrange(Y_labels_full, rmse_type) %>% 
+  pivot_wider(id_cols = c('Y_labels_full', 'rmse_type', 'sim_seed'), 
+              names_from = 'ss',
+              values_from = 'value') %>% 
+  mutate(ratiopolempty = `Correlates from all families` / `Empty model`,
+         ratiopolbase = `Correlates from all families` / `Correlates from families 4-7`,
+         ratiobaseempty = `Correlates from families 4-7` / `Empty model`) %>% 
+  group_by(Y_labels_full, rmse_type) %>% 
+  summarise_at(vars(matches('ratio')),
+               list(m = ~mean(.), 
+                    lo = ~quantile(., 0.025), 
+                    hi = ~quantile(., 0.975))) %>% 
+  pivot_longer(names_sep = '_', names_to = c("rmse", "what"),cols = matches('ratio')) %>% 
+  pivot_wider(values_from = value, names_from = 'what') %>% 
+  mutate(rmse = factor(rmse, levels = unique(rmse)[c(2,1,3)]))
+```
+
+```{r results-across-splits plot-3, eval=T}
+p1 <- ggplot(out_df_rel, aes(rmse_type, m)) +
+  geom_hline(yintercept = 1, linetype = 'dotted')+ 
+  geom_errorbar(aes(ymin = lo, ymax = hi, color = rmse),position = pd, width = 0) +
+  geom_point(aes(fill = rmse, shape = rmse, color = rmse), position = pd, size = 2) +
+  facet_wrap(~Y_labels_full, scales = 'free_x') +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank()) +
+  theme(legend.position = 'bottom') +
+  xlab('') + coord_flip() +
+  guides(fill = guide_legend(ncol = 1),
+         shape= guide_legend(ncol = 1),
+         color = guide_legend(ncol = 1)) +
+  scale_shape_manual(values = c(21, 22, 23)[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  scale_fill_manual(values = c('grey40', 'Black', 'grey70')[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  scale_color_manual(values = c('grey40', 'Black', 'grey70')[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  ylab('MSE ratio') +
+#  xlim(c(NA, 1.2)) + 
+  scale_y_continuous(limits = c(0,NA), breaks =  seq(0, 2, 0.5))
+
+p1
+
+ggsave('figs/lasso_mse_ratios_alloutcomes.pdf', width = 8, height = 7)
+
+## Same plot for the two main outcomes 
+
+p1 <- ggplot(out_df_rel %>% filter(Y_labels_full %in% Y_labels), 
+             aes(rmse_type, m)) +
+  geom_hline(yintercept = 1, linetype = 'dotted')+ 
+  geom_hline(yintercept = 0, linetype = 'dotted')+ 
+  geom_errorbar(aes(ymin = lo, ymax = hi, color = rmse),position = pd, width = 0) +
+  geom_point(aes(fill = rmse, shape = rmse, color = rmse), position = pd, size = 2) +
+  facet_wrap(~Y_labels_full, scales = 'free_x') +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank()) +
+  theme(legend.position = 'bottom') +
+  xlab('') + coord_flip() +
+  guides(fill = guide_legend(ncol = 1),
+         shape= guide_legend(ncol = 1),
+         color = guide_legend(ncol = 1)) +
+  scale_shape_manual(values = c(21, 22, 23)[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  scale_fill_manual(values = c('grey40', 'Black', 'grey70')[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  scale_color_manual(values = c('grey40', 'Black', 'grey70')[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  ylab('MSE ratio') +
+  scale_y_continuous(limits = c(0,NA))
+p1
+  
+ggsave('figs/lasso_mse_ratios.pdf', width = 6.5, height = 3.5)
+```
+```{r prediction over time, eval = F}
+n_it = 50
+Y_list_full = Y_list
+
+out_overtime <- pbapply::pblapply(seq(70, max(df$elapsed), 5), function(d) {
+  
+  lasso_data_temp <- df[complete.cases(df[, unique(c(Y_list_full, measures_pol, measures))]), ] %>% 
+    filter(elapsed == d)
+  
+  lapply(1:n_it, function(i) {
+    fun_repl(seed_tt = i, lasso_data = lasso_data_temp)
+  })%>% reduce(rbind) %>% 
+    mutate(elapsed = d)
+})%>% reduce(rbind) 
+
+```
+
+```{r, eval = F}
+## Clean up output for plotting 
+
+out_overtime_rel <- out_overtime %>% 
+  pivot_longer(cols = matches('rmse'), names_to = "rmse_type") %>% 
+  mutate(value = value^2) %>% 
+  mutate(rmse_type = dplyr::recode(rmse_type,
+                                   `rmse_empty_train` = 'In-sample prediction (empty model)',
+                                   `rmse_empty_test` = 'Out-of-sample prediction (empty model)',
+                                   `rmse_train` = 'In-sample prediction',
+                                   `rmse_test` = 'Out-of-sample prediction')) %>% 
+  mutate(ss = ifelse(str_detect(vars, 'Political'), 
+                     'Correlates from all families',
+                     'Correlates from families 4-7'))%>% 
+  mutate(ss = ifelse(str_detect(rmse_type, 'empty'), 'Empty model', ss)) %>% 
+  mutate(rmse_type = str_remove(rmse_type, ' \\(empty model\\)')) %>% 
+  filter(!(vars == 'Base' & ss == 'Empty model')) %>% 
+  dplyr::select(-vars) %>% 
+  arrange(Y_labels_full, rmse_type) %>% 
+  pivot_wider(id_cols = c('Y_labels_full', 'rmse_type', 'sim_seed', 'elapsed'), 
+              names_from = 'ss',
+              values_from = 'value') %>% 
+  mutate(ratiopolempty = `Correlates from all families` / `Empty model`,
+         ratiopolbase = `Correlates from all families` / `Correlates from families 4-7`,
+         ratiobaseempty = `Correlates from families 4-7` / `Empty model`) %>% 
+  group_by(Y_labels_full, rmse_type, elapsed) %>% 
+  summarise_at(vars(matches('ratio')),
+               list(m = ~mean(.), 
+                    lo = ~quantile(., 0.025), 
+                    hi = ~quantile(., 0.975))) %>% 
+  pivot_longer(names_sep = '_', names_to = c("rmse", "what"),cols = matches('ratio')) %>% 
+  pivot_wider(values_from = value, names_from = 'what') %>% 
+  mutate(rmse = factor(rmse, levels = unique(rmse)[c(2,1,3)]))
+```
+
+```{r, eval = F}
+p1 <- ggplot(out_overtime_rel %>% filter(Y_labels_full %in% Y_labels), 
+             aes(rmse_type, m)) +
+  geom_hline(yintercept = 1, linetype = 'dotted')+ 
+  geom_errorbar(aes(ymin = lo, ymax = hi, color = rmse),position = pd, width = 0) +
+  geom_point(aes(fill = rmse, shape = rmse, color = rmse), position = pd, size = 2) +
+  facet_grid(elapsed~Y_labels_full, scales = 'free_x') +
+  theme_bw() + 
+  theme(panel.grid.major = element_blank()) +
+  theme(legend.position = 'bottom') +
+  xlab('') + coord_flip() +
+  guides(fill = guide_legend(ncol = 1),
+         shape= guide_legend(ncol = 1),
+         color = guide_legend(ncol = 1)) +
+  scale_shape_manual(values = c(21, 22, 23)[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  scale_fill_manual(values = c('grey40', 'Black', 'grey70')[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  scale_color_manual(values = c('grey40', 'Black', 'grey70')[c(2, 1, 3)], 
+                    name = '',
+                    labels = c('Ratio: all families vs. empty model',
+                               'Ratio: all families vs. families 4-7',
+                               'Ratio: families 4-7 vs. empty model')[c(2, 1, 3)]) +
+  ylab('MSE ratio') +
+  scale_y_continuous(limits = c(0,NA), breaks =  seq(0, 2, 0.5))
+p1
+
+ggsave('figs/lasso_mse_ratios_over_time.pdf', width = 6.5, height = 15)
+
+```

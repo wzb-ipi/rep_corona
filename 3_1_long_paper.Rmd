@@ -1,0 +1,1080 @@
+---
+title: "Social and political correlates of Covid-19"
+author:
+- "Manuel Bosancianu^[WZB, Berlin Social Science Center. Warm thanks for detailed comments and critiques from Chris Blattman, Zoltan Fazekas, James Fearon, Guy Grossman, Stéphane Helleringer, Jonas Hierman, John Huber,  Nahomi Ichino, Friederike Kelle, Evan Lieberman, Ellen Lust, Jim Robinson, Michael Ross, Heike Solga, Federico Vegetti, Shana Warren, Chagai Weiss, Rebecca Weitz-Shapiro, Georg Weizsaecker, Michael Zürn, and participants of the “WZB Talks” seminar series.  Special thanks to Miriam Golden for *two* sets of deep and detailed comments.]"
+- "Kim Yi Dionne^[UC Riverside]"
+- "Hanno Hilbig*^[Harvard University]"
+- "Macartan Humphreys*^[Columbia University, corresponding author, `macartan.humphreys@wzb.eu`]"
+- "Sampada KC*"
+- "Nils Lieber*^[Bayreuth University]"
+- "Alexandra Scacco*"
+date: "`r format(Sys.time(), '%d %B, %Y')` draft. Not yet for circulation. Most recent version [here](https://wzb-ipi.github.io/corona/paper.pdf)"
+output:
+  pdf_document:
+    keep_tex: true
+    number_sections: true
+    toc: true
+    toc_depth: 3
+abstract: "Do political and social characteristics of states help explain the evolving distribution of reported Covid-19 deaths? We identify national-level political and social measures that past research suggests may help explain variation in a society's ability to respond to adverse shocks. We then set up an analysis structure to (i) report on the evolving covariance between these measures and the cross-national distribution of Covid-19 burdens, and (ii) assess whether these political or social characteristics are selected by a Lasso variable selection procedure. Currently, a small set of demographic and health variables explain about two thirds of cross-national variation in deaths. Political and social variables provide limited additional traction at this time and are generally not selected by the Lasso procedure. This includes features that have received attention in public discussions, such as the role of populist governments, right-leaning governments, or women-led governments. These patterns may change considerably over time with the evolution of the pandemic, however. A dashboard with daily updates, extensions, and code is provided at https://wzb-ipi.github.io/corona/ \\newpage"
+bibliography: bib.bib
+urlcolor: orange
+header_includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{threeparttablex}
+  - \usepackage{pdflscape}
+  - \usepackage{titlesec}
+  - \titleformat*{\section}{\LARGE\bfseries}
+  - \titleformat*{\subsection}{\Large\bfseries}
+  - \titleformat*{\subsubsection}{\Large\bfseries}
+---
+
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE)
+
+check.packages <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg))
+    install.packages(new.pkg, dependencies = TRUE,
+                     repos = "https://cran.rstudio.com")
+  sapply(pkg, require, character.only = TRUE)
+}
+
+pkgList <- c("RCurl","WDI","readxl","httr","knitr","tidyverse",
+             "estimatr","stargazer","countrycode","dataverse",
+             "zip", "lubridate", "rvest", "fastDummies", "lfe",
+             "directlabels", "kableExtra", "ggrepel", "ggpubr", "tidyverse", "grid")
+
+check.packages(pkgList)
+
+source("code/thirds_graph.R")
+source("code/add_linebreak.R")
+source("code/results_list.R")
+source("code/plotresults.R")
+source("code/oos_plot.R")
+source("code/short_table.R")
+```
+
+```{r load lasso results , echo = FALSE, message=F, warning=F}
+## Load all Lasso results
+lasso_res <- read_rds("saved/lasso_res.rds")
+n_controls <- 4
+
+# get data
+measures <- read.csv("measures.csv") %>% filter(include == 1)
+
+##
+
+lasso_1 <- lasso_res$lcoef_controls %>%
+  filter(outcome == "deaths_cum_log" & abs(coef)>0) %>%
+  filter(!duplicated(vars)) %>%
+  filter(rank(-abs(coef))<=n_controls)
+
+controls <- c(lasso_1$vars, "detect_index")
+controls_labels <- c(lasso_1$labels, 'Health data quality (GHSI)')
+
+controls_text <- paste(paste(tolower(controls_labels)[1:4], collapse = ", "), ", and ", tolower(controls_labels)[5])
+controls_text <- gsub("\n", " ", controls_text)
+controls_text <- gsub("ghsi", "GHSI", controls_text)
+controls_text <- gsub("imhe", "IMHE", controls_text)
+controls_text <- gsub(" ,", ",", controls_text)
+
+## This automatically selects the top four covariates by outcome
+## We use this as input for the results_list function
+
+controls_use <- lasso_res$lcoef_controls %>%
+  filter(abs(coef)>0) %>%
+  group_by(outcome) %>%
+  filter(!duplicated(vars)) %>%
+  filter(rank(-abs(coef))<=n_controls) %>%
+  ungroup() %>%
+  dplyr::select(vars, outcome)
+
+#### Health data quality will always be added to controls ####
+outcomes <- c('deaths_cum_log',
+              'deaths_cum_per_million_log',
+              'stringency', 'mobility_index',
+              'lockdown_bin', 'distancing_bin')
+
+add_data_quality <- expand.grid(outcome = outcomes, vars = 'detect_index')
+
+## Add
+
+controls_use <- controls_use %>% 
+  bind_rows(add_data_quality)
+```
+
+
+
+```{r load data, echo = FALSE, message=F, warning=F}
+## MEASURES
+measures <- read.csv("measures.csv") %>% filter(include == 1)
+
+## DATA
+
+
+df_full   <- read.csv("saved/df_full.csv")
+df        <- read.csv("saved/df.csv")
+df <- df %>%
+  group_by(geoid2) %>%
+  mutate_at(vars(lockdown_bin, distancing_bin, stringency, mobility_index),
+            list(~mean(., na.rm = T))) %>%
+  ungroup()
+
+# In case todays data is less complete than yesterdays, take yesterdays
+data_date <- max(as.Date(df$date_rep), na.rm = TRUE)
+if( (df %>% filter(date_rep == data_date) %>% nrow()) <
+    (df %>% filter(date_rep == data_date-1) %>% nrow())) data_date <- data_date - 1
+
+df_today  <- df %>% filter(as.Date(date_rep) == data_date)
+
+
+ 
+
+# For the relative analysis figure out which day has at least 120 cases
+rel_cut <- table(df$elapsed_rel)[table(df$elapsed_rel) >= 120] %>% names %>% as.numeric %>% max
+df_rel <- filter(df, elapsed_rel == rel_cut & complete.cases(dplyr::select(df, all_of(controls))))
+```
+
+```{r additional output setup, echo = FALSE, message=F, warning=F}
+## Here we declare the additional outcomes for which results will be printed in the appendix
+## Since plots always show results for two outcomes, outcomes need to always be declared in pairs
+## Ie this 'list of lists' structure needs to remain as it is, with 2 elements in each sublist
+
+Y_additional <- list(c('lockdown_bin', 'distancing_bin'),
+                     c('stringency', 'mobility_index'))
+Y_additional_labels <- list(c('Lockdown', 'Distancing measures'),
+                            c('Response stringency', 'Population mobility'))
+
+## Controls: If lasso controls are desired, the outcomes needs to be added in the lasso script
+## Otherwise we will always use the lasso controls from the total deaths outcome
+```
+
+
+\fontsize{12}{22}
+\selectfont
+
+\newpage
+
+# Introduction
+We review major literatures from political science and cognate disciplines that highlight political and social factors that plausibly render governments and societies better able to promote effective policies and counter threats. We then assess the extent to which measures suggested by these accounts can help explain cross-national differences in Covid-19-related mortality.^[Covid-19 refers to the infectious disease caused by a novel coronavirus that was first reported in Wuhan, China in December 2019, with further major outbreaks in Iran, Italy, Spain, and the United States. The World Health Organization declared Covid-19 a public health emergency of international concern in February 2020. At the time of writing, infections are global.] Public discussions have focused heavily on political and social explanations for the impact of Covid-19, with media articles highlighting government preparedness, characteristics of leaders, or of political systems. The *New York Times* noted that countries that had experienced other recent diseases “knew the drill” and were thus better prepared to respond quickly to the current pandemic. Articles in the *Washington Post* highlighted how countries led by women responded quickly and effectively, and that these women leaders offered “voices of reason.” Polarization drives fake news and poor responses, according to the *Times of India*. Populism kills, claims *Der Spiegel*. 
+ 
+How consistent are these explanations with social scientific accounts of state-level responses to pandemics? There is not, we think, a ready answer. With a number of important exceptions [@pattersonaids; @Lieberman2007; @Lieberman2009; @dionne2011role; @blair_public_2017; @chigudu2020political], political scientists do not typically focus on disease outcomes. But they do examine the ways in which societies and governments behave, how individuals overcome (or fail to overcome) problems of collective action, sometimes in the wake of crises that represent correlated risks, such as economic collapse or natural disasters. If disease outcomes prove to be a function of swift and appropriate government responses, and the ability and willingness of groups in diverse societies to comply with government health directives, knowledge from political science may prove helpful in understanding how states fare in the wake of Covid-19. 
+
+It is possible that existing theories may have limited application for this question, however. In general, as noted by @carpenter2012health, the extent to which knowledge on political processes applies to public health outcomes is an open and understudied empirical question. Moreover, there are features of the current pandemic that may limit the applicability of classic accounts of political processes. We describe a number of these below. Finally, we note that political theories often focus on understanding *causal* relations and, in some ways, asking these theories to account for observational patterns puts a more challenging question to them.^[In the treatment in @pearl2018book, asking questions about patterns of association rank at the lowest rung of the ‘ladder of causation,’ questions regarding the effects of interventions are on the second rung, and counterfactual questions on the third. However, although calculating associations is in general easier than ascertaining effects, knowledge of effects does not in general licence claims about associations. Making inferences to associations requires knowledge about the distribution of other covariates as well as selection processes.]
+
+Our goal here is modest: to evaluate the extent to which different accounts of social and political processes can help shed light on simple cross-sectional patterns of spread and the distribution of the current disease burden. We do not focus on time-series properties of spread, and our primary substantive focus is not on epidemiological features, but rather on the characteristics of states that have differential death rates.  The goal here differs from that of short-term prediction, which uses real-time information, such as current burdens, or the content of internet searches [see @zhang2019predicting], to predict the evolution of disease spread. Machine learning approaches can also, in principle, be very effective in producing and cross-validating predictions and in identifying correlates, though with models that typically do not connect with theoretical accounts or focus on explanation. These approaches are better suited to the task of assessing where next, at least in the short term, these burdens are likely to fall.
+
+Given multiple inferential risks, we frontload key precautions in interpreting the results that follow:
+
+**Causal Inference**. Although causal accounts motivate the set of covariates we focus on, none of the empirical analysis we provide lays claim to causal identification. For instance, wealthy countries are currently experiencing more deaths than poorer countries. We do not know whether this is *because* they are wealthy or because of many other attributes that correlate with wealth. For this reason, strong evidence of a relationship between a covariate and Covid-19 should not, in itself, be used to infer that a change in the covariate will induce a change in the disease burden.^[The limitations on causal inference in this case are myriad. The most obvious concern is that explanatory variables of interest are not randomized and so correlations can reflect self-selection and confounding. There are other concerns, however. First, this is a setting where there are obvious spillover dynamics which can introduce bias in estimation of effects. Second, models control for features of societies---such as overall wealth---that are themselves plausibly “post treatment” relative to other measures--such as social structure. Third, measurement errors may be correlated with potential outcomes. Fourth, the analysis often takes place at a macro level, making it difficult to infer causal relations that operate at a more micro level.] We note, moreover, that well-identified estimates of causal effects, though desirable when possible, are not themselves sufficient to explain disease distributions. For instance, @careltonmeng2020 provide valuable causal evidence on the effects of exogenous changes in temperature on transmission, yet whether hotter places experience greater transmission than cooler places can depend on other ways that these places are different, including ways in which they have adapted to different temperatures in different periods.
+
+**Measurement concerns**. We rely on outcome data on deaths from the European Centre for Disease Prevention and Control, which provides daily updates. We focus in particular on deaths data, which is arguably less affected by underreporting than cases data. Even so, cross-national differences in recording and classification of deaths can contribute to observed correlations. These differences in reporting can reflect both variation in state capacity [@mikkelsen2015global] and political choices on the part of states [@iranDW2020]. To partially account for this, all estimates that use controls include a measure of the quality of health reporting, which is at present strongly positively correlated with deaths. Another way to capture the full scope of the pandemic’s health toll is to look at “excess mortality”---the difference between the total number of people who died for any reason during a particular period, and the historical average for the same place and time of year. This approach has the advantage of sidestepping the thorny issue of determining what counts as a Covid-19 death. With a few exceptions in Western Europe, this data will be released more slowly, with a more complete picture likely emerging in 2021 [@economist2020]. We will use excess mortality as one of our core outcome measures in planned future analysis, described in section \ref{pap} below.
+
+
+**Changing skew, changing scale**. The distribution of the outcome variable is highly skewed at present---with many cases with a few hundred deaths and a handful with deaths in the tens of thousands---and is changing daily.  Moreover, the scale of the outcome variable is changing over time, which means that steeper slopes over time can reflect the trajectory of spread within countries more than systematic differences across countries.
+
+With these caveats in mind, we highlight several patterns in the data to date. First, there is substantial global variability in reported deaths with, currently, both levels and growth rates considerably lower in developing countries. Second, a small set of demographic and health variables---population, age structure, respiratory disease prevalence, and features of health systems---currently predicts a very large share of variation. Third, at this point, most of the social and political characteristics of countries we examine correlate weakly with the current severity of the crisis and often not in the direction expected by standard theories of government responsiveness and collective action. While some suggestive patterns are emerging, these measures of political and social systems and processes do not, in general, account for significant residual variation.
+
+We emphasize however, that we are still in early stages of the pandemic and the effects of political and social structures may take time to leave a mark. We accompany this article with a real-time [tracker](https://wzb-ipi.github.io/corona/) that provides continuous updates of all figures as more data about the pandemic’s progress are made available and we will return to this analysis as the pandemic recedes. Section 7 describes the outcome measures we plan to use and timing of this future analysis.
+
+We describe the outcomes of interest in the next section. Section 3 is the heart of the paper and describes a series of political and social logics that might explain variation in outcomes. Section 4 gives an overview of the estimation strategy and shows expected mortality given the control variables (see Figure \ref{oos}). We present the main results on deaths in section 5 (jump to Table \ref{maintable1} for major patterns to date). Section 6 provides more inductive results, using a Lasso variable selection procedure. Section \ref{pap} describes a strategy for planned future analyses and section 8 concludes.  
+
+# Outcomes
+
+## Reported cumulative deaths
+
+We focus analysis on the reported cumulative deaths from Covid-19 (logged), drawing from the ECDC daily reports [https://www.ecdc.europa.eu](https://www.ecdc.europa.eu).  The distribution of the unlogged outcome for `r format(data_date, '%d %B, %Y')` is shown in Figure \ref{outcomed}, for countries with at least 10 deaths, broken down by per capita income. Figure \ref{figregions} shows the growth in deaths by World Bank classification of world regions; the graph, based on John Burn-Murdoch's designs for  the *Financial Times,*^[https://www.ft.com/coronavirus-latest] uses a log scale and rescales the $x$-axis to comparable starting points.
+
+
+
+```{r, fig.cap="\\label{outcomed} Distribution of reported deaths", echo = FALSE, warning = FALSE, fig.width = 10, fig.height = 5}
+df_full %>% filter(as.Date(date_rep) == data_date & deaths_cum > 10) %>%
+  mutate(group = if_else(gdp_pc > median(gdp_pc, na.rm = TRUE),
+          paste0("GDP/capita > ",
+           paste0(round(1000*round(median(gdp_pc, na.rm = TRUE)), 0), " USD PPP")),
+          paste0("GDP/capita < ",
+           paste0(round(1000*round(median(gdp_pc, na.rm = TRUE)), 0), " USD PPP")))) %>%
+  filter(!is.na(group)) %>%
+  mutate(country = str_replace_all(country, "_", " ")) %>%
+  ggplot(aes(x = reorder(country, deaths_cum_log+1),
+             y = deaths_cum)) +   
+  geom_point(shape = 21, fill = 'white') +
+  labs(x = "Country",
+       y = "Total deaths (log scale)") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank()) +
+  facet_wrap(group ~ ., scales = "free_y", ncol = 2) +
+  scale_y_continuous(trans='log10') +
+  coord_flip()
+
+```
+
+
+
+```{r, fig.cap="\\label{figregions} Distribution of deaths by regions (China excluded)", echo = FALSE, warning = FALSE, fig.width = 10, fig.height = 4}
+
+df_reg <- df  %>%
+  group_by(region, elapsed) %>% summarize(region_deaths_cuml = sum(deaths_cum, na.rm = TRUE)) %>%
+  group_by(forcats::fct_explicit_na(region)) %>%
+  mutate(relative_start = ifelse(any(region_deaths_cuml >= 1),    min(elapsed[region_deaths_cuml >= 1]), NA),
+         elapsed_rel = elapsed - relative_start) %>%
+  ungroup() %>%
+filter(elapsed_rel > -1 & !is.na(region))  
+
+df_reg %>%
+  ggplot(aes(x=elapsed_rel, y=region_deaths_cuml + 1, color = region)) +
+  geom_line() +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank()) +
+  xlab("Days since 1st death") +
+  ylab("Cumulative deaths") +
+  geom_dl(aes(label = region), method = list(dl.trans(x = x + .2), "last.points")) +
+  theme(legend.position = "none")+
+  scale_y_continuous(trans='log10') + xlim(0, max(df_reg$elapsed_rel, na.rm=TRUE) + 15)
+
+```
+
+
+In both graphs, one can see substantial cross-national variation. This variation persists when we condition on outbreak onset time in different countries. The figures also highlight the current concentration of reported deaths in wealthy countries, the US and Western Europe in particular. Figure \ref{figregions} shows that other regions not only have much lower reported deaths but that, currently, they are on substantially lower growth trajectories (when dated since onset).  
+
+Given the substantial skew in the data, we use logged values.^[More precisely we transform according to $f(x) = \log(x+1)$ so that cases with zero deaths remain in the data.] This means that the distribution of our outcome data looks like the distribution on these graphs with logged scales.
+
+We emphasize that analysis is implemented on *reported deaths*. There are substantial concerns around underreporting and reasons for concern that the degree of underreporting can be related to other characteristics of countries relevant for our analysis [@Onder_2020; @economist2020].
+
+One approach to addressing this concern is to try to take measurement weaknesses into account. We include an index of the quality of early detection and reporting of epidemics in our set of controls, though we note that the quality of reporting measure is not chosen by the Lasso procedure we use to select controls (see section \ref{estimation}). According to the Global Health Security Index (GHSI), the indicators used to construct this index assess “laboratory systems; real-time surveillance and reporting; epidemiology workforce; and data integration between the human, animal, and environmental health sectors.” The US is the top-ranked country on this measure, followed by Australia and Latvia. Syria ranks at the bottom. In additional analyses in the appendix (see Figure \ref{results_highqual}), we also condition all results on countries in the top two thirds of this index.
+
+## Deaths per capita
+
+As a secondary outcome, we use deaths per capita (also logged). Deaths per capita puts countries on a more comparable scale, and other welfare outcomes, including disease burdens, are often examined in per capita terms. Under some conditions, however, absolute numbers might be more informative. Imagine there was a single disease outbreak in each country. Under this scenario, population size would only matter for cumulative deaths if size affects the speed of transmission, or if ceiling effects came into play. The question would simply be how bad did things get before the outbreak was brought  under control. If the number of outbreaks were to increase with population size, then larger countries would face greater challenges.
+
+
+```{r, fig.cap="\\label{popdeath} Population sizes and total deaths", echo = FALSE, fig.width = 8, fig.height = 3.6, warning = FALSE}
+
+df2 <- filter(df_today, deaths_cum > 10)
+df2 %>%
+  mutate(do_label = ifelse(!between(((1+pop_tot*1000) * (1+deaths_cum)),
+                                   quantile((1+pop_tot*1000) * (1+deaths_cum), 0.05, na.rm= T),
+                                   quantile((1+pop_tot*1000) * (1+deaths_cum), 0.7, na.rm= T)),
+                           1, 0)) %>%  
+  ggplot(aes(x=1+pop_tot*1000, y=1+deaths_cum)) +
+  geom_point(alpha = 0.5, size = 2) +
+  xlab("Population")+
+  ylab("Cumulative deaths") +
+  theme_bw() +  
+  scale_y_continuous(trans='log10') +
+  scale_x_continuous(trans='log10') +
+  theme(panel.grid.minor = element_blank()) +
+  ggrepel::geom_text_repel(data = . %>% filter(do_label == 1),
+                           aes(label = geoid2))
+
+
+M1 <- lm_robust(deaths_cum ~ pop_tot, data = df_today)
+M2 <- lm_robust(log(deaths_cum+1) ~ log(pop_tot+1), data = df_today)
+
+```
+
+
+
+As an empirical matter, although population size accounts for just `r round(100*M1$adj.r.squared,2)`% of the variation in deaths---reflecting in part the low death rates in India and China---log population is a powerful predictor of log deaths, explaining   `r round(100*M2$adj.r.squared,2)`% of the variation. For reference, we provide both sets of results, though we treat total deaths as the primary outcome.^[Note moreover, that a model with the log of deaths per capita on the left hand side is equivalent to a model with log deaths on the left and log population on the right but with a coefficient on log population constrained to equal -1.]
+
+## Deaths since onset
+
+In examining the distribution of deaths at a given point in time, we ignore the fact that the disease arrived in different countries at different times. One can account for this by examining outcomes $x$ days since onset -- for example `r rel_cut` days since the first 10 cases, for instance (Figure \ref{onsetgraph}). For purposes of comparison, we implement this analysis and report results in the Appendix (Figure \ref{results_summary_rel}). We do not treat this analysis as primary, however, for two reasons. First, the timing of onset can depend on country responses (for instance, countries could delay onset by rapid border closures). Second, in the long run, if curves flatten across cases, this measure should be similar to our primary measure.  
+
+
+
+```{r, echo = FALSE, fig.cap= paste("\\label{onsetgraph}Distribution of deaths, ", rel_cut, " days after 10th reported case"), warning = FALSE,, fig.width = 8, fig.height = 3.6}  
+df_rel %>%
+  mutate(do_label = ifelse((gdp_pc * log(1+deaths_cum_per_million)) >
+                             quantile(gdp_pc * log(1+deaths_cum_per_million), 0.655, na.rm= T),
+                           1, 0)) %>%  
+  ggplot(aes(gdp_pc, deaths_cum_per_million+1)) +
+  geom_point(alpha = 0.5, size = 2) +
+  xlab("Per capita GDP (USD '000)")+
+  ylab("Deaths / million") +
+  theme_bw() +  
+  theme(panel.grid.minor = element_blank()) +
+  scale_y_continuous(trans='log10') +
+  ggrepel::geom_text_repel(data = . %>% filter(do_label == 1),
+                           aes(label = geoid2))
+```
+
+
+
+
+
+
+## Policy and behavioral outcomes
+
+Many of the accounts we describe operate through intermediate policy and behavioral outcomes and there has been substantial effort gathering data on government responses and social behaviors. This includes data on “stringency” from the Blavatnik School’s [Coronavirus Government Response Tracker](https://www.bsg.ox.ac.uk/research/research-projects/coronavirus-government-response-tracker) and behavioral data on social distancing from Google’s aggregation of mobility trends for a set of activities.
+
+We do not include these outcomes in our analysis however. The primary reasons are that optimal policies, insofar as they are known at all, depend on (a) the disease burden, which depends on prior policy, (b) policy options available to governments, and (c) the welfare costs of different responses. These features make it hard to form expectations around the relationship between political variables and policy and between policy and deaths. A country might implement stringent policies, but only because it failed to act early to prevent initial spread. Another country might implement less stringent policies, but only because it has other effective policy options that can minimize costs on citizens. Similar logics are at play for social mobility also. In short, our theories indicate which countries should be responding more effectively but are not fine grained enough, in our view, to speak to specific policies.  For reference we show the joint distribution of policy stringency and deaths and of mobility and deaths in Figures \ref{stringency_deaths} and \ref{mobility_deaths}.  Other studies that seek to tackle some of these complexities head on include @hale2020variation, @cronert2020democracy, @frey2020democracy, and  @kumar2020impact.
+
+```{r, echo = FALSE, fig.cap= paste("\\label{stringency_deaths} Stringency (average over period) and deaths "), warning = FALSE,, fig.width = 8, fig.height = 3.6, message = FALSE}  
+df_today %>%
+  mutate(do_label = ifelse((abs(scale(rank(stringency))) > 1.5) |
+                           (abs(scale(rank(deaths_cum_per_million))) > 1.5), 1, 0)) %>%
+  ggplot(aes(stringency, deaths_cum_per_million+1)) +
+  geom_point(alpha = 0.5, size = 2) +
+  xlab("Stringency")+
+  ylab("deaths / million") +
+  theme_bw() +  
+  theme(panel.grid.minor = element_blank()) +
+  scale_y_continuous(trans='log10') +
+  ggrepel::geom_text_repel(data = . %>% filter(do_label == 1),
+                           aes(label = geoid2))+
+  geom_smooth()
+```
+
+```{r, echo = FALSE, fig.cap= paste("\\label{mobility_deaths} Mobility (average drop over period) and deaths "), warning = FALSE,, fig.width = 8, fig.height = 3.6, message = FALSE}  
+df_today %>%
+  mutate(do_label = ifelse((abs(scale(rank(mobility_index))) > 1.5) |
+                           (abs(scale(rank(deaths_cum_per_million))) > 1.5), 1, 0)) %>%
+  ggplot(aes(mobility_index, deaths_cum_per_million+1)) +
+  geom_point(alpha = 0.5, size = 2) +
+  xlab("Mobility")+
+  ylab("deaths / million") +
+  theme_bw() +  
+  theme(panel.grid.minor = element_blank()) +
+  scale_y_continuous(trans='log10') +
+  ggrepel::geom_text_repel(data = . %>% filter(do_label == 1),
+                           aes(label = geoid2))+
+  geom_smooth()
+```
+
+
+
+
+# What insights from political economy?
+
+## Framework
+
+We draw on a simple framework designed to organize thinking about how different features of a society and its political structures might matter for the ultimate outcome of interest: Covid-19-related mortality (see Figure \ref{dag}). There is no claim that the framework captures all variables important for explaining the outcome. Moreover, many of these variables may be connected to each other in ways not described here. We note further that the model focuses on cross-sectional variation rather than dynamics of spread and, therefore, does not represent potentially important feedback processes, such as the effects of infections on policy choices.  Nevertheless, it captures a set of major channels through which features of a society that pre-date the pandemic are causally related to later measures of reported deaths.
+
+
+![\label{dag}Model connecting background variables to reported outcomes]("figs/dag.pdf")
+
+
+In this framework, political variables enter through two major families: one reflects **state capacity**, which matters for what a state *can* do, and **political structures**, which, by shaping government incentives, matter for what a government is *willing* to do. State capacity and political structures affect the responses states take, and help to determine their ability to enlist the cooperation of their populations.
+
+States have responded to the pandemic by enacting policies that require---sometimes drastic---behavioral changes on the part of their populations. The degree to which people comply depends on the nature of the policies enacted and on how much people trust their governments, which may be affected by **social structures** (e.g., social diversity, pervasive marginalization of social groups), as well as on states’ capacities to enforce policies.
+
+Actual infections (as opposed to just reported ones) are plausibly favored by global physical connectedness, and other features that aid rapid virus diffusion, such as urbanization, population density, and according to some evidence, temperature [@wang2020high]. These features are grouped here as **global linkages** and **environmental risks.** Compliance with policies is also plausibly linked to the prevalence of infections. Social structures, such as organization into distinct social groups (e.g., on the basis of ethnicity or social class), may also matter for disease spread by conditioning the number of intended or involuntary^[Such as those facilitated by a low level of geographic segregation, for example.] interactions in the population.        
+
+Whether infections lead to deaths depends on underlying **health risks** in populations and **health system** capacities. Last, we observe reported rather than actual deaths. In the model, we emphasize that reported deaths may not accurately reflect actual deaths, given political incentives to underreport, or limited access to health care, which can lead to undercounting,  as people who die  of the disease outside of health systems are not included.
+
+In the following sections, we describe in greater detail the links illustrated in this framework. Crucially, we draw on existing theories in political science to connect political and social variables to our outcome variable.
+
+## Explanatory variables
+
+We now flesh out logics linking variables in these families to outcomes, recognizing that, in some cases, the placement of particular variables into a given family is imperfect.^[Political polarization for instance, could matter because of how it shapes the policy-making process in a multi-tier system, and the speed with which policies are implemented on the ground. This would place it in the “political structures” category. Polarization might also operate at the societal level, however, by altering the way citizens process information coming from the government, and influencing the level of compliance with official regulations. This logic situates it closer to other arguments  included in the “social structures” family.]
+
+### State capacity
+
+Multiple arguments connect state capacity to the spread of infectious diseases. They begin with the recognition that disease outbreaks generate problems of collective action that often require coordinated government-led responses [@dionne2018doomed]. The ability of states to take appropriate action requires, first of all, that state actors *know* what the situation is within their territory [@lee2017legibility]. Many other dimensions of state capacity may be important as governments attempt to respond to a pandemic, including administrative, extractive, and even coercive capacities [@cingolani2015minding; @hanson2013leviathan]. We describe arguments and measures related to various aspects of state capacity below.
+
+**General capacity.** @patrick2006weak notes that, although research on government action typically focuses on political incentives, the greatest problem in weak states may simply be “a genuine inability to prevent and respond adequately to disease outbreaks.” @gizelis2009wealth provides evidence ---from a large sample of countries over time--- of the central role played by government capacity, independent of regime type, in the containment of the AIDS epidemic.
+
+As general measures of capacity, we use an index of government effectiveness  produced by the World Bank capturing “perceptions of the quality of public services, the quality of the civil service and the degree of its independence from political pressures.”
+
+**Sector-specific capacity.** As a measure of sector specific-capacity we use a comprehensive assessment of *pandemic* preparedness--- a country’s ability to prevent and detect, and rapidly respond to infectious disease outbreaks--- from the Global Health Security Index (GHSI). Additional health system capacity measures are included under the “health systems” family of variables below.
+
+**Bureaucratic learning.** Accounts of bureaucratic capacity emphasize the role of bureaucratic learning [@reiter1995political]. To account for the possibility that bureaucratic learning from prior health crises might improve government responses to Covid-19, we include a measure of recent experience with SARS, Ebola, or MERS, drawing on data from the World Health Organization. Experience with the SARS outbreak of 2002-03 has been associated with the swift response to Covid-19 implemented by South Korea and China [see, for example, the discussion in @fox2020].
+
+**Fragility.** Extreme instances of state weakness arise in states suffering from civil wars or widespread political instability, in what the literature sometimes refers to as “fragile states.” Numerous paths link state fragility and vulnerability to rapid disease spread. These include crippled economies, the destruction of health infrastructure, weakened general health conditions, and large population movements.  Conflict, particularly when protracted,  devastates institutions and hollows out bureaucracies. It can render populations inaccessible to health and humanitarian workers. It weakens trust in government and, along with it, citizen willingness to comply with government directives. It can weaken intergroup trust and a sense of common fate across communities.^[See @icg2020 for a timely discussion of the risks posed by Covid-19 in contexts of recent and ongoing conflict.] Indeed, @ghobarah2003civil show that disease spread following war contributes to significant post-war mortality.^[For a historical account of similar processes, and a discussion of the role of conflict in contributing to medical research, see @charters2014disease.] Domestic and international conflict can facilitate contact between infected and uninfected populations, through the movement of soldiers and the displacement of civilian populations [@iqbal2010violent]. Together, these arguments suggest that Covid-19 should be particularly devastating for countries currently or recently affected by conflict, leading to higher mortality rates in those countries.
+
+To capture these dimensions of conflict-affected states, we include the State Fragility Index generated by the Integrated Network for Societal Conflict Research, which produces scores for each country on “effectiveness” and “legitimacy” along security, political, economic, and social dimensions.
+
+
+
+**Decentralization.** A state’s capacity to respond to crises also plausibly depends on the way authority is dispersed within it, with a substantial literature focusing on the potential benefits of decentralization of power [see @faguet_decentralization_2014; @mookherjee_political_2015]. Starting from US Supreme Court Justice Louis Brandeis’ view of state government as a “laboratory” for policy experiments [@brandeis_new_1932], one line of argumentation has framed decentralization in a positive light. It facilitates policy experimentation and competition between sub-national units [@weingast_economic_1995, p. 5], which ought to result in better policies in the long term by disciplining them and incentivizing them to provide services more efficiently [@brennan_power_1980]. In addition, it should also improve accountability by increasing the capacity of voters to monitor the elected representatives that make sub-national decisions [@treisman_decentralization_2002, p. 4], as well as allow local governments to react more quickly  to a rapidly developing crisis than in the case of a centralized system. As applied to a health crisis, these arguments would predict that greater decentralization would reduce mortality: electoral incentives would make local authorities prioritize early testing and imposition of social distancing measures so as to reduce mortality.
+
+A second set of arguments suggests a more pessimistic view. Decentralized systems confront greater collective action problems [@wibbels_federalism_2005, p. 2], which can be a deadly handicap in the face of a health emergency that, by its very nature, requires coordinated and rapid action. Such systems have multiple veto points [@tsebelis_veto_2002] that tend to lock in the status quo or allow for local-level discretion that facilitates policy fragmentation [@michener2018fragmented], and are susceptible to waste and duplication [@treisman_decentralization_2002, p. 7]. Indeed, some evidence suggests that  decentralization leads to higher levels of corruption [@fan_political_2009] and worse education and health outcomes, as proxied by infant mortality, rates of infant vaccination, access to clean water sources, and youth literacy [@treisman_decentralization_2002].
+
+Overall, though, we note that the weight of arguments points to decentralization having a positive influence on health outcomes [@cavalieri_does_2016; @croke2012; @kang_does_2012; @kumar_effect_2017; @robalino_does_2001]. The gains from policy experimentation may be particularly important when facing a new threat. We include in our models an index of federalism that we construct from indicators found in the 2017 version of the Database of Political Institutions [@cruz_database_2018]. The indicators refer to (1) whether or not there are autonomous regions; (2) whether municipal governments are locally elected; (3) whether state/province governments are locally elected; (4) whether state/provinces have authority over taxing, spending, or legislating; and (5) whether the constituencies of the senators are the states/provinces. Each indicator was centered and standardized. The final mean-based index of federalism was computed only for those countries that had at least 3 valid measurements on these 5 indicators.^[The highest share of missing information was found for the last two indicators (above 60%), meaning that the final index is predominantly computed based on the first three indicators.] Higher values on the index denote a greater degree of federalism in the country.
+
+**Corruption.** The discussion thus far has largely looked at state capacity through the lens of what states *can* do. A classic literature in political science on state “autonomy” focuses more directly on the question of what *motivates* state actors [@skocpol1979state;  @geddes1994politician; @haggard2018politics]. For example, how free are bureaucrats to act, independent of powerful interest groups and political actors? To what extent is the machinery of the state “captured” by a narrow set of economic and political elites? Although we lack direct measures of state autonomy, large bodies of theoretical and empirical work on political corruption allow us to address a set of related questions.
+
+Corruption can be thought of as a feature of state strength or of accountability failures [@rose2013corruption]. Multiple accounts highlight the adverse effects of corruption on service provision [@azfar2008does; @davis2004corruption; @fisman2017corruption].  @gupta2001corruption in particular describe three channels through which corruption weakens health systems. These include higher prices and poorer service provision, weaker investment in human capital, and reduced government revenue. A smaller literature suggests that corruption can have a beneficial effect (“greasing the wheels”), especially in weaker states [@meon2010corruption].^[For a review see @meon2005does.] @serra2012chapter provide an overview of experimental studies, typically implemented at a macro level and often focused on measuring corruption. @olken2007monitoring is an important exception, and documents how audits to reduce corruption result in better service delivery in Indonesia. Such accounts suggest weaker overall responses to a pandemic. Corruption may also introduce additional inequalities within societies in who is able to access services [see, for instance, @hunt2010bribery on corruption-induced price discrimination in the health sector]. We include a measure of  the extent of political corruption in the country from the V-DEM project. The index includes a set of items that capture dimensions of public sector, executive, legislative and judicial corruption, along multiple levels of the polity; it also covers both petty and grand corruption. The raw indicators that comprise the components and sub-components of the index are arrived at via expert assessments, aggregated through a Bayesian IRT measurement model [@pemstein_v-dem_2020].
+
+
+For a number of reasons, more traditional arguments about state strength may not help us explain outcomes in the current pandemic. First, classic accounts of state effectiveness typically assume that governments know, or can know, what policies are optimal (or at least sensible). Without such knowledge, the importance of the state’s ability to act becomes less clear. Second, some of the relevant policies in this case---such as implementing distancing provisions---require compliance but not state strength as we often understand it. (Convincing populations to stay home dependent on a government’s trustworthiness as much as its ability to take complex actions.) Third, we often think of state capacity in terms of the ability to “reach” its citizens (for example, to tax them, or count them in a census, or provide them with public goods). In the case of the current pandemic, however, a state’s weakness along this dimension may actually be beneficial. If more fragile countries are cut off from external and internal sources of contagion (for example, due to the destruction of transportation infrastructure during conflict), this may in fact slow the spread of disease.
+
+Figure \ref{thirdsss} shows the evolution of deaths for countries broken down by quantiles of these measures.
+
+```{r scfig, echo = FALSE, fig.width=10, fig.height = 14, warning = F, message = FALSE, fig.cap = "\\label{thirdsss}State strength measures; cumulative deaths (logged)."}
+
+
+ggarrange(
+ 
+  thirds_graphs("gov_effect", labels = c("Least effective", "Middle third", "Most effective"),
+                plot_title = 'Government effectiveness (World Bank)'),
+ 
+  thirds_graphs("pandemic_prep", labels = c("Least prepared", "Middle third", "Most prepared"),
+                plot_title = 'Pandemic preparedness'),
+ 
+  thirds_graphs("infection", labels = c("Less exposed", "More exposed"),
+                plot_title = "Past exposure to Ebola / SARS / MERS", k = 2),
+  thirds_graphs("federal_ind", labels = c("Most centralized", "Middle third", "Most decentralized"),
+                plot_title = 'Federalism index'),
+ 
+ 
+  # thirds_graphs("vdem_corr", labels = c("Least corrupt", "Middle third", "Most corrupt"),
+  #               plot_title = 'Corruption index'),
+ 
+ 
+  thirds_graphs("state_fragility", labels = c("Least fragile", "Middle third", "Most fragile"),
+                plot_title = 'State fragility index'),
+ 
+ 
+  ncol = 1)
+
+
+```
+
+
+### Political structures
+
+Government reactions to crises may depend not only on their ability to respond, but also on their *incentives* to do so, which political scientists have long argued should be shaped by the nature of a country’s political institutions. In this section, we describe a core set of features of the political landscape that plausibly shape politicians’ preferences for the strength, timing and mix of policies adopted to counteract the coronavirus pandemic. These explanations revolve around three central mechanisms: (1) the way in which institutions (whether political or media) shape political accountability linkages [@persson_political_2000, chap. 9]; (2) the electoral horizon that governments have to take into account when formulating pandemic policies, and (3) the need for a partisan government to incorporate the needs of specific constituencies in the decision-making process [@hibbs_political_1977].
+
+**Democratic Institutions.** @sen1982poverty famously argued that democratic institutions and a free press have a major effect on the incidence of famines. Famines may be triggered by natural events, but their scale and impact depends on human responses [@waal2006towards]. The simplest logic that Sen points to is that of political accountability, whereby politicians in democratic contexts take actions to protect (informed) populations because they are accountable to them.  The same logic may account for variation in the impact and spread of diseases. Political accountability is associated with greater  spending on public goods [@Boix2001; @Kaufman2001; @Ghobarah2004], and particularly on the health system [@Besley2006]. @bollyky2019relationships, for instance, argue that “[d]emocratic experience explains 22--27% of the variance in mortality within a country from cardiovascular diseases, 16--53% for tuberculosis” ---results echoed in other studies [@Boone1996; @Halperin2009]. Similar evidence has been found on the relationship between democracy and infant mortality in @lake2001invisible, @kudamatsu2012has, and @diaz2016political.^[For contrary views, see @rubin2009merits and @ross2006democracy, the latter of whom argues that while democracies spend more on health, this does not benefit populations widely.] For evidence  on the importance of democracy at the local level, see @diaz2016political who argue that Mexican municipalities "that experienced an alternation of power between political parties are better at preserving infants’ lives than municipalities that remained under the exclusive hegemonic control of the PRI."^[These claims are based on observational data. See @fujiwara2015voting, however, for a natural experiment showing how improvements in democratic institutions (in this specific case, the introduction of electronic voting in Brazilian municipalities) can plausibly lead to better health outcomes.]
+
+In democracies, the rules structuring electoral competition affect policy outcomes and distribution through shaping how political parties compete and coalesce [@iversen2006; @selway2015coalitions]. These, together with other institutional rules, can set the parameters for executive action and interest group influence [@immergut1992rules]. Majoritarian systems incentivize politicians to target goods to narrow constituencies and compared to proportional representation (PR) systems, have lower provision of universal public goods [@persson_political_2000] and less redistribution [@iversen2006]. Regarding health outcomes in particular, @selway2015coalitions shows the inclusive coalitions found in PR systems lead to greater distribution of health facilities and resources, resulting in better health outcomes. Furthermore, by shaping the type of coalitions that assume power [@iversen2006] and party polarization dynamics [@cox_centripetal_1990], the electoral system feeds into the government partisanship and institutional gridlock effects that we elaborate on below.
+
+One early analysis of electoral systems and COVID-19 impact suggests that PR and mixed systems have fewer COVID-19 deaths than majoritarian systems, and that this may be due to PR systems having greater health system coverage and capacity, as measured by COVID-19 testing and ventilator availability [@selway2020]. To capture the potential impact of democratic institutions, we include a measure of liberal democracy, produced by the V-DEM project [@coppedge_v-dem_2020; @pemstein_v-dem_2020], as well as the Polity score, originally generated by Robert Gurr [@marshall_polity_2019]. To capture whether states have a PR system, we include a measure from the Database of Political Institutions that contrasts proportional representation systems with all others.
+
+**Media.** @besley2002political extend Sen’s logic and focus on the role of the media. In their account, the media is important for incentivizing governments: if governments get credit from media outlets for responding to crises, they have greater incentives to do so. This mechanism should be stronger for otherwise difficult to observe shocks and depends on the presence of democratic institutions. The media can also take a more confrontational stance, and see its role as “speaking truth to power.” This can provide incentives to politicians to capture the media sector [@besley2006handcuffs], and thus sever a crucial link in the government accountability chain---resulting in poorer government performance [@adsera2003you; @snyder2010press]. To examine this relationship, we include an indicator of the extent to which the media is independent of pressures (particularly bribes) to alter their coverage of issues, sourced from the V-DEM project.
+
+
+**Electoral Pressures.** Literatures across substantive areas within political science suggest that political action is most intense when electoral pressures are high---when seats are contested, or in the run-up to elections. @nordhaus1975political provides a classic account of “political business cycles”, focusing on ways that economic policies respond to electoral incentives. @meserve2017deadly documents plausible effects of electoral cycles on health outcomes in the French Third Republic, arguing that “political importance, not need, plays a prominent role in determining who lives and dies in democracies.” A plausible account of how politicians react to the pressures posed by the Covid-19 pandemic starts with the sensitivity of the electorate to economic downturns, and particularly unemployment [@cohen_relative_2004; @dassonneville_economic_2013; @markus_impact_1988; @pacek_political_1995]. One of the standard responses to the pandemic has been to impose lockdown measures of varying intensity, that typically include closures of retail outlets and restaurants, and stringent social distancing guidelines for other businesses. These measures will result, in the short term, in a spike in unemployment and an accelerated economic contraction [@stebbins_coronavirus_2020; @strauss_years_2020]. Politicians who are up for reelection in the near future should be more sensitive to the economic damage caused by strict lockdown measures, and correspondingly opt for laxer guidelines. Such choices would then be reflected in mortality rates.
+
+With direct reference to health emergencies, for example, @dionne2011role argues that upcoming elections and shorter time horizons are related to *less* investment against fighting AIDS in Africa. Leaders with shorter horizons implemented policies that were seemingly more comprehensive but cheaper and more visible than effective. A critical part of her argument, however, relies on the slow-moving nature of AIDS---a feature not shared with Covid-19---  which gives myopic politicians incentives to ignore the spread.^[Electoral pressures arguments are relevant not only for overall policy responses but may have important distributive consequences within countries. For example, although pressures to respond in a certain way to a public health crisis may increase in general across a country, there may be particularly intense pressures in politically competitive areas.]
+
+A counter-argument is that voters undoubtedly care about their own health as well, and feel strongly about governments’ responsibility to protect citizens during public health emergencies. Moreover, governments are not entirely powerless in how they frame any economic downturn, and voters do seem to care about responsibility [@delia_winning_2014; @peffley_attributing_1985].^[However, see @arceneaux_who_2006 for an instance when voters did punish the incumbent when they believed that preparation for a natural disaster was the authorities’ responsibility.] The ability to claim that Covid 19 was a “black swan,”^[The book that popularized the term refers to global epidemics as “white swans”: rare events, but that are certain to happen [@taleb_black_2007].] and that strict measures were essential to guarantee population health might spare a government electoral punishment. Finally, the fact that attributions of responsibility might themselves be shaped by partisanship [@tilley_is_2011] might make a government willing to impose strict measures even if within sight of an election.
+
+We assess which line of argumentation finds support in the data by including in our specifications the time (relative to 2020) until the next general election.
+
+**Natural resource dependency.** A country’s natural resource endowment may shape the responsiveness of its government to citizens’ needs. @karl1997paradox, documenting the “paradox of plenty”, highlights ways in which the availability of rents from natural resources can weaken state--society linkages. @paler2013keeping provides micro-level evidence suggesting that citizens monitor governments more closely when governments are funded by taxes rather than by windfalls. @de2013natural argue that governments dependent on natural resources neglect citizen well-being and find oil wealth is correlated with HIV prevalence and AIDS deaths. Natural resource dependency---oil in particular---has been linked to a broader class of adverse effects---notably, weaker institutions, corruption, and conflict---that may, in turn, affect government responses to crises [@ross2015have]. To investigate this possibility, we include a World Bank measure of oil rents as a share of GDP. A complication with Covid-19 is that it coincided with a dramatic drop in oil prices at an early stage, producing a government income shock that accompanies possible political channels.  
+
+**Populism.** In a definition given and operationalized by @pop2020,  populist political leaders are united by two claims: “(1) that a country’s ‘true people’ are locked into a moral conflict with ‘outsiders’ and (2) that nothing should constrain the will of the ‘true people.’” Under this account, populist politicians can exacerbate cultural divisions, take a skeptical position towards science and expertise, and can be erratic in decision-making, eschewing the policy moderation that can result from between-party compromise. Insofar as populist leaders take anti-establishment positions, they can also weaken state services, such as health services, that rely on institutionalized bureaucratic structures and expertise. Skepticism about the severity of Covid-19 risks has been voiced by leaders such as Donald Trump in the US and Jair Bolsonaro in Brazil, creating conflicts between messaging by executives and health authorities. Recent cross-national studies offer evidence that populist leaders contribute to a deterioration of both government accountability and state capacity [@Rode2015; @Cachanosky2018; @Murphy2019], suggesting multiple paths through which populist politics could result in less effective government responses to the Covid-19 crisis.^[Though see @Rodrik2018 for a limited defense of economic populism in times of national emergency.]
+
+The measure we use from @pop2020 focuses specifically on electoral populism and classifies 17 states currently as having governments led by electoral populist parties, including a number of cases with significant early deaths from Covid-19, including Italy, the US, Brazil, and Turkey.
+
+The **ideological orientation** of a government may also shape its response to a public health crisis. Two arguments suggest that governments led by right-wing parties may be less likely to implement the kinds of policies advocated by public health experts to combat Covid-19. First, insofar as the choice of policy reflects relative weights put on economic costs versus social welfare, more right-leaning parties may implement policies that place more weight on protecting property while left-wing governments would put more weight on health and welfare  [@bobbio_left_1996; @hicks_politics_1992; @lijphart_democracies_1984; @mcdonald_cross-temporal_2007]. Second, the policies currently advocated to combat the coronavirus involve nontrivial infringements upon civil liberties ---such as freedom of movement--- for public benefits, which right-leaning parties may be more reluctant to do.^[Mattias Kumm, WZB Talks speaker series, 29 April 2020: “It’s not just balancing liberty vs. life & health: Some basic rights issues surrounding Corona restrictions.”] In practice, too, evidence suggests that citizens adopt views advocated by the parties they support. @kushner2020partisanship describe polarization between divergent party responses in the US, reporting that “political differences are the single most consistent factor that differentiates Americans’ health behaviors and policy preferences;” while @merkley2020rare describe a “rare moment” of partisan consensus in Canada on the importance of responding to Covid-19. There are, also, we note counter logics to this for the Covid-19 pandemic; in particular the *costs* of these responses are also visible and borne by poorer voters, with, for instance risks of steep rises in unemployment, which could dent differentials in positions between left and right parties.
+
+We include a measure of ideological position for only a small set of governments, given by a weighting of ideological placements of all parties that form the government (larger numbers denoting more right leaning governments) drawing on @doring_parliaments_2019.
+
+
+**Political polarization.** A considerable part of managing a public health emergency is conveying a clear message concerning spread, state actions, and mitigation techniques [@vaughan_effective_2009]. High levels of political polarization can potentially disrupt the effectiveness of official communication, particularly when considering its strong affective dimension [@iyengar_affect_2012]. Under such conditions, a sizable part of the population may attribute a partisan bias to all official messages, leading to lower compliance with government health advisories. Such a partisan lens extends to trust in the source of the message: with growing polarization, the governing apparatus is seen as less trustworthy by supporters of the other side [@citrin_political_2018; @hetherington_why_2015]. In combination, this partisan discounting of the trustworthiness of the source, and of the message itself, can result in lower compliance rates with official guidelines [@blair_public_2017; @vinck_institutional_2019] and, therefore, in higher mortality. Though we lack cross-national evidence regarding this phenomenon, preliminary analyses link compliance with mobility restrictions instituted during the Covid-19 pandemic with partisanship [@allcott_polarization_2020].
+
+In addition to its potential effects on citizen compliance with government policies, an extensive literature on American politics documents the link between party polarization and stalemate in the policymaking process [@Layman2006], to the extent that ideological polarization between parties reduces legislative productivity in the US Congress even more than divided government [@Binder2004; @Jones2001]. Such legislative gridlock can plausibly impede swift, effective policy responses in times of crisis.
+
+Further evidence from the American context suggests that, for political systems with multi-tier governance, hyper-partisanism can lead to implementation of policy recommendations at varying speeds, depending on the partisanship of state government [@adolph_pandemic_2020]. And polarization too, following the logic described in @kushner2020partisanship can lead to variation in citizen responses as a function of divergent positions taken by parties. Taken together, various strands of the literature suggest that highly polarized political contexts will suffer more Covid-19-related fatalities.
+
+We include in our analyses an indicator of party polarization computed based on MARPOR data [@volkens_manifesto_2019]. Using the existing RILE index of Left-Right placement of parties found in the data source, we compute party polarization based on the @taylor_party_1971 method: the sum of weighted deviations of party positions from the average party system placement, with party vote shares used as weights.
+
+**Women leaders.** A large and growing body of work in economics and political science suggests that a leader’s gender matters for shaping policy outcomes [@chattopadhyay2004women; @Iyer2012]. This relationship may be driven by women leaders putting greater weight on the welfare of women [@barnes2012gender], or simply by an alignment of preferences [@chattopadhyay2004women; @Clayton2018].
+
+Emphasizing value distinctions @Matsa2013 suggest that gender differences in corporate leadership strategy may be attributed to female directors’ greater concern for their workers relative to their male counterparts. Highlighting gendered preferences for public goods, @clayton2018 show electoral gender quotas are associated with an increase in government expenditures on public health and a relative decrease in military spending. Similarly, @Bhalotra2014 connect reductions in neonatal mortalities to increased representation of women in parliament in India. @Miller2008 also relates increased public health spending and reduced child mortality to women’s suffrage in the United States. Prior research therefore leads us to expect gender gaps in political priorities in responding to Covid-19. Specifically, with the weight of existing evidence pointing to women leaders prioritizing public health spending, female leadership could plausibly lead to fewer Covid-19 related deaths.
+ 
+Not all studies find that female leadership is associated with common measures of social welfare promoting policies, however. @koch2011 find that among democracies during the period 1970--2000, having a female executive is associated with higher defense spending and greater external conflict. They argue that women at higher levels of political office tend to favor policies that are seen as more “masculine” in order to overcome the credibility challenge inherent in holding offices typically held by men. Similarly, @Dube2019 argue that polities ruled by queens between 1480-1913 were more likely to engage in war in a given year than those ruled by kings, though they posit a different underlying causal mechanism.
+
+It is important to note that many of the studies described here employ experimental or quasi-experimental variation. An important caveat, therefore, in attempting (as we do here) to test these arguments using observational variation is that places that have women leaders are likely different along multiple dimensions than those that do not [@Lu2014].
+
+To capture the role of female leadership in a government’s response to the Covid-19 crisis, we include a simple measure of whether the executive is headed by a female leader.  
+
+The sections above outline many plausible arguments that emphasize the role of political accountability in shaping the decisions governments make, both in response to crises, and more broadly. It is important to note, however, that it is possible that the urgency of Covid-19 is so great, and the effects so widely distributed, that capacity constraints will be more important than political incentives in explaining variation in outcomes.
+
+
+
+Figure \ref{thirdsps} shows the evolution of deaths for countries broken down by quantiles of these measures.
+
+```{r scfig2, echo = FALSE, fig.width=11, fig.height = 16, warning = F, message = FALSE, fig.cap = "\\label{thirdsps}Political structures measures: cumulative deaths (logged)."}
+
+
+ggarrange(
+
+  thirds_graphs("vdem_libdem", labels = c("Less democratic", "Middle group", "More democratic"),
+                plot_title = 'Democracy group'),
+
+  thirds_graphs("vdem_mecorrpt", labels = c("Less independent", "Middle group", "Most independent"),
+                plot_title = 'Media independence'),
+
+  thirds_graphs("dist_anyelec", labels = c("Elections close", "Middle group", "Elections distant"),
+                plot_title = 'Distance to elections'),
+ 
+    thirds_graphs("oil", labels = c("Less dependent", "Middle group", "Most oil dependent"),
+                plot_title = 'Oil dependency'),
+ 
+  thirds_graphs("electoral_pop", labels = c("Not populist",  "Populist"),
+                plot_title = 'Electoral Populism', k = 2),
+
+ 
+ thirds_graphs("pos_gov_lr", labels = c("More left", "Central", "More right"),
+                plot_title = 'Government ideological position'),
+ 
+ thirds_graphs("polar_rile", labels = c("Least polarized", "Middle Group", "Most polarized"),
+                plot_title = 'Party polarization'),
+ 
+ thirds_graphs("woman_leader", labels = c("Not woman leader", "Woman leader"),
+                plot_title = 'Women leaders', k = 2),
+
+  ncol = 1)
+ 
+
+
+```
+
+
+
+
+### Social structures
+
+Existing literature points to the role of social structures, such as the division of societies into ethnic, religious, or economic groups, in accounting for variation in welfare. In the context of a pandemic, social structures could plausibly condition both the spread of the disease and the ability of governments to respond to it. Highly diverse or unequal societies have often been characterized by low levels of intergroup, interpersonal and institutional trust. Deeper or more salient divisions may weaken cooperation with ---or even increase outright public resistance to--- government health directives that rely on perceptions of a shared fate within national boundaries. Widespread ethnic or social discrimination may leave groups with limited access to government support, rendering them particularly vulnerable during a pandemic.    
+
+**Ethnic diversity.** Two large, well-supported literatures in economics and political science suggest opposite predictions for the relationship between ethnic heterogeneity and the spread of disease.^[Note that we follow @Horowitz1985 in using a broad definition of the term “ethnic” to refer to social identity groups in which membership is based on actual or perceived descent. We therefore follow @Horowitz2001, @Chandra2004, @Wilkinson2004, @Chandra2012, and others [more recently, for example, @scacco_warren_2018], in the ethnic politics literature in considering, for example, religion, race and caste as dimensions of ethnicity.]
+
+
+First, an extensive body of work documents obstacles posed by ethnic diversity for collective action, coordination, informal sanctioning of bad behavior, empathy, and trust, arguably all of which should weaken government effectiveness and public compliance in the face of a public health crisis.^[See @Alesina2005 for a review of empirical studies linking ethnic diversity and poor economic outcomes, and @Habyarimana2007 for a discussion of mechanisms linking group diversity to collective action problems. @Baldwin2010 provide evidence of an intergroup “empathy gap” that contributes to low levels of public goods provision in diverse contexts.] Particularly when an infectious disease is stigmatized and perceived by the public to affect specific ---usually marginalized--- groups, politicians, the media, and local leaders may be slow to take action [@cohen1999boundaries;@Lieberman2009]. @Lieberman2009 directly applies an argument about ethnic divisions to disease outcomes, using both within- and cross-country variation to make the case that societies with deeper divisions produce poor public policies in the face of a health crisis. He describes multiple channels, but a key insight is that popular understandings of epidemics can take on an ethnic dimension, resulting in inappropriate scapegoating and false beliefs regarding risks and immunities associated with different groups. Even media coverage can reflect the perceived ethnicization of disease [@armstrong2006whose]. Taken together, these studies suggest that more diverse societies should be less able (or willing) to contain a pandemic, leading us to expect more Covid-19-related deaths.^[This view is not uncontested, however. For example, see @page2019diversity on the enhanced ability of diverse societies to innovate.]
+
+Another well-established literature on the political economy of ethnic diversity focuses on the relative density of intraethnic (as opposed to interethnic) networks, and suggests that social fragmentation should actually slow the spread of disease. Early work in this vein begins with the assumption that between-group interactions are typically far less frequent than within-group interactions, with possible consequences for the spread of information and the ability to sanction antisocial behavior within ethnic networks [@Fearon1996; @chandra2007ethnic; @miguel2005ethnic], while later work offers empirical evidence in support [@Habyarimana2007; @gubler2012horizontal; @Larson2016; @Larson2017]. Given fewer interactions across groups, it is reasonable to expect that the spread of the disease should be more limited within ethnically diverse societies.
+
+Further insights can be drawn from work on ethnic *marginalization* in diverse societies. Pervasive discrimination, political exclusion, and disparities in access to health care, may leave marginalized ethnic communities especially vulnerable in the face of a health crisis [@bhala2020sharpening;@garg2020hospitalization; @yancy2020covid].^[For suggestive evidence of Covid-19’s disproportionate impact on immigrant communities in highly diverse central Queens, see @nyt_queens.] Historical experiences of exclusion can frame how people in marginalized groups engage with dominant institutions and groups [@cohen1999boundaries]. A large literature highlights conditions, such as widespread economic and political discrimination, associated with low levels of intergroup trust and cooperation [@gurr2015men; @gurr2000peoples; @Cederman2009]. Members of marginalized groups are likely to exhibit low levels of trust in government, and empirical studies in developed [@alsan2018tuskegee] and developing country contexts [@Obadare2005; @Dionne2013; @blair_public_2017; @arriolagrossman2020] suggest they are less likely to comply with public health advisories.
+
+We capture ethnic diversity and ethnic politics using several measures. We first include measures of *ethnolinguistic* and *religious fractionalization*, using data from @alesina2003fractionalization. To address arguments about ethnic marginalization, we use a measure from the Ethnic Power Relations (EPR) dataset [@Vogt2015] of the share of a country’s population that is made up of ethnic groups  defined as *excluded from government* in the data.
+
+**Economic inequality.** Adapting the framework of @Leigh2011, we can identify three different channels through which a higher level of income inequality might increase a country’s rate of mortality attributed to Covid-19.
+
+To begin with, there is an *absolute income* effect: a mean-preserving increase in income inequality implies that incomes have decreased for part of the population, making them less able to afford medical treatment for illnesses [@Leigh2011, p. 387], particularly in systems with a developed private healthcare market. Given that the marginal impact of income changes on health outcomes should be greater at lower incomes than at higher ones, we should observe an aggregate decrease in health outcomes from an increase in income inequality. As the presence of comorbidities has been shown to be associated with an increased mortality rate attributed to Covid-19 [@Zhou2020], such a development would lead to a higher mortality rate in more unequal countries. To the effect just described, we also add a *relative income* pathway: growing income disparities lead to social comparisons and status anxiety [@Marmot2005], which can increase susceptibility to a wider array of illnesses [@Durevall2012; @Sawers2010; @Chen2012; @selye_stress_1976; @steptoe_stress_2012; @Wilkinson2006; @Wilkinson2009]. As in the previous pathway, these illnesses increase the Covid-19 mortality rate.
+
+The third pathway encapsulates the *society-wide* effects of inequality, which plausibly impact the efficiency with which a country can respond to the challenge posed by the pandemic. By decreasing aggregate levels of trust [@Elgar2010], income inequality can impact the provision of public goods [@Leigh2011], and particularly a well-funded and efficient health system [@Ghobarah2004]. By damaging social cohesion [@Barnett2002], inequality can undermine the very type of coordinated, society-wide action that is needed to prevent contagious diseases from spreading faster. We use in our specifications the Gini index of net income inequality, sourced from the Standardized World Income Inequality Database (SWIID), version 8.2 [@solt_standardized_2016].
+
+**Interpersonal and institutional trust.** In addition to serving as a mechanism underpinning the impact of economic inequality, trust can exert an independent effect on mortality rates. Lower levels of interpersonal trust can hinder cooperation between individuals and groups [@gachter_trust_2004; @fukuyama_trust_1996; @parks_trust_1996; @putnam_tuning_1995]. Responding to a major epidemic requires such large-scale cooperation, particularly in following health and social distancing guidelines. In its absence, we expect higher infection rates, which directly translates into higher mortality. The guidelines mentioned above are disseminated by state authorities; the extent to which such messages are acted upon also depends on the degree of trust in the state authorities [@blair_public_2017; @vinck_institutional_2019; @wong2020trust]. Where such trust is fragile, we should expect a lower degree of compliance with such messages and a greater degree of misinformation about Covid-19 transmission pathways and its mortality. Both of these are likely to result in a larger number of fatalities. As an indicator of interpersonal trust we include here the share of the population that agrees with the statement “most people can be trusted”, computed based on waves 5 and 6 of the World Values Surveys (WVS), and obtained from Our World in Data [@owid_trust_2020], as well as from wave 5 of the Afrobarometer. For institutional trust, we include the share of the population that self-reports “a great deal” or “quite a lot” of confidence in the central government, also obtained from waves 5 and 6 of the WVS [@wvs_world_2018] and the 2018 wave of the Latin Barometer.^[In the case of both indicators, only surveys fielded in or after 2009 from the World Values Surveys were selected for inclusion. In instances where the Afrobarometer or Latin Barometer contained more recent surveys for a country available in WVS, the more recent time point was preferred.]
+
+
+```{r scfig3, echo = FALSE, fig.width=10, fig.height = 15, warning = F, message = FALSE, fig.cap = "\\label{thirds3}Social structure measures: cumulative deaths (logged)."}
+
+
+ggarrange(
+
+
+  thirds_graphs("al_etfra", labels = c("Less fractionalized", "Middle group", "More fractionalized"),
+                plot_title = 'Ethnic fractionalization'),
+ 
+  thirds_graphs("al_religfra", labels = c("Less fractionalized", "Middle group", "More fractionalized"),
+                plot_title = 'Religious fractionalization'),
+
+  thirds_graphs("migration_share", labels = c("Fewer migrants", "Middle group", "More migrants"),
+                plot_title = 'Migration share in population'),
+ 
+  thirds_graphs("share_powerless", labels = c("Few excluded", "Middle third", "Many excluded"),
+                plot_title = 'Exclusion'),
+
+    thirds_graphs("gini", labels = c("Most equal", "Middle third", "Most unequal"),
+                plot_title = 'Inequality'),
+ 
+  thirds_graphs("trust_people", labels = c("Weakest trust", "Middle third", "Greatest trust"),
+                plot_title = 'Interpersonal trust'),
+
+  thirds_graphs("trust_gov", labels = c("Weakest trust", "Middle third", "Greatest trust"),
+                plot_title = 'Trust in government'),
+ 
+  ncol = 1)
+ 
+
+
+
+
+
+```
+
+In addition to these core political and social measures, we include for comparison a set of economic and demographic indicators suggested by Figure \ref{dag} that can plausibly explain variations in outcomes.
+
+### Global linkages
+
+Research in the field of international political economy suggests that the global growth of interconnectivity can amplify systemic risks. @goldin2015butterfly, for instance, highlight the spatial risks of globalization, including “vector risk” for the transmission of disease. Following this logic, higher levels of global integration---as measured, for example, by trade dependencies, foreign investment, migration and air travel---should generally increase the risk of disease outbreaks and are likely to be associated with more deaths. Some accounts focus on the risks to countries that are more globalized, while others focus on the *systemic* risks arising from globalization [see @centeno2015emergence for a review].
+
+Epidemiologists have paid particular attention to global linkages in estimating short-term risks of diffusion. For example, @craig2020risk and @gilbert2020preparedness provide tools for assessing risks of importation of cases of Covid-19, using data on origin--destination air travel flows in combination with assessments of domestic health system preparedness.
+
+Studies in the political economy of global systemic risks have largely focused on globalization’s role in increasing economic risks, but some identify mechanisms through which globalization may actually *reduce* risks. The simplest argument is that wider connections can, in some instances, diversify risk. Another possibility is that globalization can spur demands for welfare policies that can cushion shocks---a logic that could, in principle, apply to global health crises [@cameron1978expansion; @katzenstein1985small; @rodrik1998more].^[See, however, counter-arguments from @iversen2000causes.]
+
+To assess these arguments, we measure global interconnectivity in air travel, migration, trade, and foreign investment, using data from the World Bank.
+
+### Environmental risks
+
+Beyond the risks of spread arising from global linkages, demographic and climatic features can also increase vulnerabilities, conditional on behaviors. Although not a central focus of our analysis, we include for comparison purposes some several demographic measures including measures of population density and the percentage of the population living in urban areas, as well as climatic measures of temperatures and precipitation.
+
+
+### Health risks
+
+Even conditional on infections, measures of age structures ---for example, the share of a country’s population aged 65 and above--- and the prevalence of respiratory diseases are likely to lead to higher mortality levels. Indeed, a growing epidemiological literature suggests that older populations are at greater risk of dying from Covid-19 [@Hauser2020; @Onder2020].
+
+Though not included in our measures, we note that air quality too has been associated with higher mortality, other things equal [@air2020].
+
+### Health systems
+
+Countries vary not only in their political structures but in the policy outputs of political processes. Critically, there is substantial variation across societies in the role of the state in regulating and managing health care systems, as well as the degree of protection available to social groups. We are not aware of a substantial literature in political science linking social protection to national-level resilience to shocks [although see @rodrik1998more]. Health scientists have done more to address this question. See, for example, @siroka2016association, who document a relationship between social protection and tuberculosis [see also @reeves2014social]. In addition to a standard measure of hospital beds per capita, we include a set of measures of social protection ---such as the share of a country’s population with health insurance--- since these capture important political variation across states and because there are intuitive, plausible mechanisms, such as better access to authoritative health information, better management, and a greater ability of individuals to respond to infection, that should help explain variation in Covid-19 fatalities.
+
+
+**Reporting.** Health systems also matter for what is reported. There are broad concerns around underreporting of both cases and fatalities. A particular concern for cross-sectional analysis is that countries with weaker health systems systematically underreport and thus might appear to have fewer deaths than they have. This concern can partly be addressed by using information specifically on reporting capacity. @hollyer2014measuring provide a discussion and measurements of reporting from political science research. We incorporate information from GHSI that captures early capacity for "detection and reporting epidemics of potential international concern."
+
+```{r, echo = FALSE}
+M <- lm_robust(as.formula(paste("deaths_cum_log ~ ", paste(controls, collapse = "+"))),
+               data = filter(df, as.Date(df$date_rep) == data_date))
+```
+
+# Estimation {#estimation}
+
+The core analyses report coefficients on explanatory measures of interest from linear regressions of outcomes (primarily cumulative Covid-19 deaths on a given day). We include a small set of simple controls selected using a Lasso ("least absolute shrinkage and selection operator") approach. By using Lasso, we choose the set of controls that minimize the cross-validated out-of-sample error of a linear model. The top four variables selected by this procedure vary somewhat depending on what day's data is used. For this paper we have selected controls using data from 14 May 2020. The variables selected are  `r controls_text`  (see data appendix for more details on measures). In addition to employing LASSO to select controls, we include a measure of health quality reporting due to its intuitive appeal in accounting for measurement concerns around reporting of deaths.  Notably, although a direct measure of health quality reporting was available for selection it was not in fact selected as a control variable, and nor was the most commonly used measure of economic development, per capita GDP.
+
+Thus our estimating equation for day $t$ for each measure of interest $X$ is:
+
+$$y^t =  \beta_0^t + \beta_1^t X + \gamma^tZ + \epsilon$$
+where $Z$ is a vector of controls.  As of `r format(data_date, '%d %B, %Y')`, the four control variables account for `r round(100*M$r.squared, 0)`% of  the cross national variation in deaths. See Figure \ref{contcont} for relations between these controls and outcomes on different days (for unconditional relations see Figure \ref{bivcont} in supplementary material). Data missingness among these control variables  results in dropping data for Cote d'Ivoire, Cuba, Cyprus, Iran, Morocco, Palestine, Russia, Sudan, Somalia, South Sudan, Syria, the United Republic of Tanzania, Ukraine, and Kosovo (among countries with populations of 1 million or more). In addition China is excluded from all analyses to allow for a focus on internal reactions to an external shock. We emphasize that these controls can be considered "post treatment" with respect to the political and social measures we include: for instance plausibly the gains from better government are captured by higher GDP. For this reason the absence of a conditional correlation does not imply causal irrelevance of a variable.
+
+We calculate confidence intervals using robust standard errors.^[Calculated using `lm_robust` from the `estimatr` package for `R`.] In addition to reporting coefficients and confidence intervals, our output reports the partial adjusted $R^2$ and the number of observations used in each analysis [@ives2019r]. In additional analyses, we also report the estimated coefficients from a model with no controls.
+
+![\label{contcont}Relation between controls and logged deaths at different points in time (each conditional on the others; partial adjusted $R^2$ reported.)]("figs/deaths_cum_log_controls.pdf")
+
+Figure \ref{oos} shows how these controls perform in predicting out of sample; each point in the figure shows the actual and predicted values for a given country where predicted values are generated from models that do not include the model in question. We see currently that the controls perform relatively well but do not pick up on particular features that give rise to the large numbers for Italy, Spain, France, the UK and US. These have high rates even taking account of reporting, income, age profiles, and population; Japan especially stands out as a case with fewer deaths than might be expected given these controls.
+
+```{r, message = FALSE, warning = FALSE, fig.cap = "\\label{oos} Out of sample predictions from controls. Points above (below) the 45 degree line do worse (better) than predicted.", echo = FALSE}
+
+oos_plot(depvar = "deaths_cum_log", ylabel = "Actual Deaths (logged)", controls = controls)
+```
+
+# Patterns
+
+## Primary patterns
+
+We report results in Table \ref{maintable1} and graphically in Figure \ref{results_summary}. We show estimates using the most recent available data for each relationship (with and without basic controls). Coefficients are normalized and can be interpreted as differences in outcomes associated with a standard deviation shift in the variable of interest.
+
+In the supplementary material, we show the coefficients as estimated from daily data as well as correlations $x$ days since onset and correlations within subgroups.
+
+
+
+
+```{r summaryresults, echo = FALSE,  message  = FALSE, warning = FALSE}
+
+## Result function
+
+results_summary <- function(data,
+                            Y,
+                            X = vars,
+                            Xlab = NA,
+                            XX = controls,
+                            bivariate = FALSE,
+                            standardize = FALSE) {
+  ## If standardize
+  if (standardize)
+    data <- data %>%
+      mutate_at(vars(one_of(X)),
+                list(~./sd(., na.rm = T)))
+ 
+  out <-  lapply(X, function(x) {
+    
+    rhs <- ifelse(bivariate, x, paste(unique(c(x, XX)), collapse = " + "))  
+    
+    my_formula <- paste0(Y, " ~ ",  rhs)
+
+    m <- lm_robust(as.formula(my_formula), data = data)
+    n <- m$N
+    
+    ## Return
+    
+    m %>% tidy() %>% slice(2) %>%
+      mutate(n = n)
+  }) %>%
+    bind_rows()  %>%                   
+    dplyr::select(term, estimate, conf.low, conf.high, p.value, n)
+ 
+ 
+  ## Check if variable labels are desired
+  ## If yes, recode the term variable
+ 
+  if (!is.na(Xlab[1])) {
+    tempdf <- data.frame(term = X, label = Xlab)
+    out <- left_join(out, tempdf) %>%
+      mutate(term = label)
+  }
+ 
+  ## Return
+ 
+  out
+}
+```
+
+
+```{r conclusion_plot, echo = F, message=F, warning=F, comment=NA, error=FALSE,fig.width=8.5,fig.height=11, fig.cap = "\\label{results_summary}Correlates of Corona outcomes. Points represent normalized coefficients from either a bivariate model (circles) or a model with controls (squares)."}
+
+## Get the main results
+
+Y_list   <- c('deaths_cum_log', 'deaths_cum_per_million_log')
+Y_labels <- c('Deaths total (logged)', 'Deaths/million')
+
+family <- c('state_cap_vars',
+            'pol_account_vars',
+            'social_vars',
+            'econ_vars',
+            'phys_vars',
+            'epi_vars',
+            'health_sys_vars')
+
+family_labels <- c('1. State capacity',
+                   '2. Political accountability',
+                   '3. Social structures',
+                   '4. Global\nlinkages',
+                   '5. Environmental risks',
+                   '6. Health\nrisks',
+                   '7. Health\nsystems')
+
+results_list(data = df_today,
+             Y_list = Y_list,
+             Y_labels = Y_labels,
+             family=family,
+             family_labels=family_labels,
+             controls_use=controls_use) %>%
+  plotresults()
+
+```
+
+
+
+```{r result_table for total deaths, echo=F,eval=T,message=F,warning=F}
+
+short_table(Y = Y_list[1],
+            Y_label =  Y_labels[1],
+            controls_use = controls_use,
+            caption = "\\label{maintable1}Estimates and p-values: log total deaths", mc_correct = T,
+            note = "The table shows estimates, raw p-values and p-values adjusted for multiple comparisons (Benjamini-Hochberg procedure). All variables are standardized. The outcome is the logarithm of the total number of deaths, as of the date of this paper.")
+```
+
+
+
+
+Currently, across almost all measures included here, the bivariate relationship between **state capacity**  and deaths is positive and strong, reflecting the current concentration of the disease in Western Europe and the United States. With controls included, these relationships are currently substantially weaker and government effectiveness is negatively associated with deaths while corruption is positively associated with deaths.
+
+Correlations with political structures measures broadly track those of the state capacity measures at this time, with the greatest concentrations of Covid-19 deaths in states with more responsive political structures. Democracy and populism are weakly associated with more deaths but relationships in this set are in general not strong at this time. There are not many governments classified in the data as electoral populist (just 17), though they include many high death locations, including Italy, the US, Turkey, and Brazil. Currently, on average, the bivariate relationship between populism and deaths is  strong, though it is substantially weaker once basic controls are introduced. Accounting for controls there is a significant relationship between oil dependency and deaths, as predicted by research on the resource curse.
+
+Currently, although the unconditional relation between social fragmentation measures and deaths is negative (particularly for ethic fragmentation and economic inequality), these relations are reversed once other factors are taken into account (Figures \ref{resultsss2}).^[This could partly be an artifact of the progression of the pandemic. After China and Iran, it has gone on to strongly impact the democratic and wealthy countries of Western Europe, which are less economically unequal and less fractionalized than the rest of the world.]  For these social diversity measures, less fractionalized countries with many deaths include France and Italy; more fractionalized countries with few or no deaths include Uganda and Liberia. There is a striking correlation between trust measures and fewer deaths, though the data for this measure is currently sparse and limited largely to wealthier countries.
+
+
+## Other covariates
+
+Global connections as measured by FDI and trade dependence are not strongly related to deaths, though air passengers carried is. "Environmental risks"---such as temperature and humidity are not strong predictors, nor are population density and urbanization. Health risks --- as captured by respiratory diseases and share of the population over 65 are, at this stage, clearly the strongest predictors. A country’s population share above age 65 accounts currently for about `r round(100*lm_robust(deaths_cum_log ~ share_older, data = df_today)$adj.r.squared,2)`% of the variation in (log) deaths across states  (Figures  \ref{resultsdemog2}). Prevalence of respiratory diseases currently accounts for about `r round(100*lm_robust(deaths_cum_log ~ resp_disease_prev, data = df_today)$adj.r.squared,2)`% of the variation in (log) deaths across states.
+
+## Other specifications: outcomes, subgroups
+
+(`29.4.2020`) We see some differences in patterns for other specifications. In particular, for analyses that focus on deaths $x$ days since a country specific outbreak date, we see that patterns are broadly more in line with what theories might suggest. Things are better in places with more effective governments, greater preparedness, and less corruption. The current analysis examines cases `r rel_cut` days since onset which covers  `r df_rel %>% nrow`  countries. Patterns from this analysis are likely to change rapidly, however, since in early periods countries (such as the US and France) registered cases early but had relatively few deaths though they increased rapidly thereafter.
+
+In analyses that examine the top 25% and bottom 75% of countries in per capita GDP also reveal a somewhat different picture. In these analyses government effectiveness is a (weak) predictor of containment in wealthier countries, though not in poorer countries.  
+
+```{r, echo = FALSE, fig.cap= paste("\\label{resgraphpoorer}Government capacity and unexplained variation for countries in top 25th and  bottom 75th percentile of per capita income"), warning = FALSE, fig.width = 8, fig.height = 3.6, message = FALSE, warning = FALSE}  
+
+pred_Y <- function(data, Y = "deaths_cum_log", controls, v) {
+  M <- lm(as.formula(paste(Y, " ~ ", paste(controls, collapse = "+"))),
+               data = filter(data, v))
+  predict(M, data, se.fit = FALSE)
+  }
+
+df_today %>%  
+  filter(!is.na(gdp_pc)) %>%
+    mutate(
+      my_group = gdp_pc > 30,
+      my_lab   = ifelse(my_group, "Wealthier", "Less wealthy"),
+      e_bot = deaths_cum_log - pred_Y(filter(df_today, !is.na(gdp_pc)), controls = controls, v=!my_group),
+      e_top = deaths_cum_log - pred_Y(filter(df_today, !is.na(gdp_pc)), controls = controls, v=my_group),
+      residuals = ifelse(my_group, e_top, e_bot)) %>%
+  group_by(my_group) %>%
+      mutate(do_label = ifelse(abs(residuals) >
+                             quantile(abs(residuals), 0.8, na.rm= T),
+                           1, 0)) %>%
+  ungroup() %>%
+  ggplot(aes(gov_effect, residuals)) +
+  geom_point(alpha = 0.5, size = 2) +
+  xlab("Government effectiveness")+
+  ylab("Log Cumulative Deaths (Residuals)") +
+  theme_bw() +
+  facet_grid(~my_lab) +
+  theme(panel.grid.minor = element_blank()) +
+  ggrepel::geom_text_repel(data = . %>% filter(do_label == 1),
+                           aes(label = geoid2)) +
+  geom_smooth()
+```
+
+
+# Current predictive power of political and social correlates
+
+The analysis above has focused on variables that existing literature suggests could be important for explaining variation in Covid-19 outcomes. In a second, complementary approach, we use a Lasso procedure to gauge whether political and social correlates have predictive power above and beyond a set of controls from the remaining families of correlates. This approach simply asks whether *any* of these variables ---individually or in combination--- enhances predictive power. We proceed in two steps.
+
+We first run Lasso to predict our two Covid-19 burden outcomes, once excluding variables in families 1--3 and again including them. In each case we employ 5-fold cross validation to obtain the tuning parameter $\lambda$ that maximizes out-of-sample accuracy. We then re-fit the model using the optimal $\lambda$. In figure \ref{lasso}, we show relative prediction accuracies for models that do and do not include the political and social correlates. We do this across 100 different splits into training (in-sample) and test (out-of-sample) sets. The confidence intervals in figure \ref{lasso} show sensitivity of the prediction accuracy to the particular units selected in the test-train splits.^[We elaborate on the individual steps of the procedure, as well as the exact definition of the MSEs in section \ref{lasso_details} in the appendix.] In figure \ref{lasso3}, we show which political and social variables were selected in an unconstrained model that maximizes prediction accuracy and indicate the partial correlation with the outcome. (for comparison Figure \ref{lasso2} in supplementary materials show the variables selected from among families 4 - 7 only).
+
+Since we show MSE ratios in figure \ref{lasso}, a value of one indicates that a given set of predictors performs well as the one that it is compared to. Values below one indicate that a model does better, as measured by the mean squared error of its predictions. As expected, we observe that adding predictors generally improves over the ‘empty’ model, in which the prediction is just the in-sample mean of the outcome. However, we find that, on average, the addition of political and social variables does not improve over models that include only simple demographic and health indicators. Overall, the results from this analysis suggest that, to date, these political and social variables have little explanatory power over and above simple demographic and health indicators.
+
+![\label{lasso} Lasso prediction accuracy. We show MSEs separately by outcome and set of correlates.]("figs/lasso_mse_ratios.pdf")
+
+![\label{lasso3} Variables chosen by Lasso and corresponding coefficients, all variable families. All variables are standardized.]("figs/lasso_coef_pol.pdf")
+
+# Future patterns {#pap}
+
+The results presented in the last sections show emerging correlations at what is likely an early stage of the Covid-19 pandemic. These patterns may change for at least four reasons. First, current patterns reflect in part randomness in the onset of outbreaks in different countries. Second, government responses are liable to change as the disease progresses. Third, different strategies may vary in their short- and longer-term effects. Fourth, data is likely to be corrected and improved over time.
+
+In the longer run, we expect variation in the broader social costs of the disease will become clearer, including deaths that arise indirectly due to pressures on health systems, and economic burdens attributable to policy responses to the disease.
+
+To assess these longer-term relationships, we intend to re-run the analyses above using the same code and specifications as used here. The primary outcomes for future analyses will be (a) cumulative reported Covid-19 deaths on 1 Jan 2021 and (b) cumulative deaths once 10 day growth rates fall below 10% in at least 50% of countries, if this comes later than 1 Jan 2021 and (c) 2020 excess deaths. We plan to focus on excess mortality because it circumvents the problem of determining what is or is not counted as a Covid-19 death. The main disadvantage is the inclusion of deaths unrelated to the pandemic.^[To help address this problem, we will exclude countries that experience large-scale natural disasters in 2020 as a robustness check.] For this analysis we will use information on deaths between 2010 and 2019 from the World Development Indicators, EuroMOMO, the Global Burden of Disease (GBD) dataset, and additional sources as they become available. We recognize that even data on excess deaths relies to some degree on civil registration and vital statistics data, which will vary in quality across states, with the best reporting systems in OECD countries and the poorest reporting systems in Africa [@mikkelsen2015global]. We also expect that innovations in measuring mortality in poor resource settings ---like the GBD study--- will themselves be limited because they have historically relied on demographic and health survey data collected in face-to-face interviews, which will be curtailed significantly during the pandemic. 
+
+In each case, our core analysis will be limited to assessing conditional correlations and testing whether these differ from 0---in other words, assessing whether the data patterns are very different to what we would expect if there were no conditional relation between these variables. We hope to deepen this analysis by tapping into the broader knowledge base of our disciplines.
+
+**Predicting first-order relations**. @dellavigna2019predict have argued that access to  *ex ante* views of researchers regarding yet-to-be-realized data patterns can help assess whether results are surprising or in line with their expectations. In principle too, knowledge of disciplinary priors---and of beliefs about the likelihood of data patterns given theories---can help clarify the extent to which different theories should be up-weighted or down-weighted following the realization of outcomes. In light of these arguments, we invite experts in the fields that this review has touched upon to register in advance their expectations regarding these relations: which direction they expect these first order relations to point, and how confident they are in their priors. For this, we will distribute a survey link to a form where experts will be able to submit their priors.
+ 
+**Additional analyses and second order relations.** We also hope that the framework we have set up can be used to support deeper analyses. Many of the relationships we highlight above involve first order relations --- i.e., conditional correlations. Beyond these first order relations, social scientific theories often suggest more nuanced claims about the mapping of political and social factors to welfare outcomes. Some of these are hinted at above. An example of a conditional hypothesis, drawing on @selway2015coalitions, is that PR electoral systems are associated with better health outcomes in ethnically homogenous societies. An example of an interaction hypothesis is that the relationship between PR and health outcomes is increasing in ethnic homogeneity. These second order relations might involve specific claims about non-linearities, claims about how variables interact to produce an outcome, or claims about the conditions under which some effect or another might hold.
+
+Although we have not examined second-order relations here, we invite scholars to propose specific hypotheses of this form for the variables contained in our larger set. In addition, we invite additional data contributions required for testing proposed hypotheses. Proposed hypotheses will be registered collectively, with coauthor credit to proposers (if consent for credit is given), and examined alongside in a separate contribution in 2021. Our hope is that crowdsourcing second-order hypotheses in this way will make it possible to tap the wisdom of the discipline beyond what we have been able to achieve with our survey of literatures. 
+
+## Prediction costs
+
+Proposals of first- or second-order propositions come with two costs, however. The first is substantive: we ask that any proposed hypothesis be accompanied by a short motivational text, with literature references if relevant. The second is statistical---an abundance of claims examined increases the chances that some claims will appear strong by chance alone. We account for that in our analysis within the families that we examine by using a Benjamini-Hochberg multiple comparisons correction. We will continue to use this procedure for submitted analyses, both at the level of the contributor  and across all contributors. This means that the more claims that are examined the stricter the conditions for significance become.^[We are, in addition, exploring the possibility of using weighted procedures so that relations proposed by multiple contributors get penalized less than those proposed by few.]
+ 
+
+
+# Conclusion
+
+We have provided a snapshot of political and social correlates of the Covid-19 burden up until `r format(data_date, '%d %B, %Y')`. We emphasized at the outset that these relations should not be interpreted as estimates of causal effects. Not only are the “treatments” not randomly assigned, but the models include controls for features that are themselves plausibly post treatment to drivers of interest. Thus, rather than seeking to estimate effects, our interest is limited to assessing whether knowledge of political and social factors give a handle on the distribution of deaths, in ways suggested by existing theory.
+
+Currently, on many counts, the answer is no: simple correlations appear opposite to those we might expect from these literatures. In particular, we see more deaths in states that score highly on common measures of government capacity and political accountability. On most political and social measures however there is currently no clear discernible relationship conditional on other factors.  
+
+
+
+We are still at an early stage of this crisis, however, and some of these correlations may change--- some may strengthen, some may change direction, and some may disappear. We accompany this article with a real time tracker^[ [https://wzb-ipi.github.io/corona/](https://wzb-ipi.github.io/corona/)] that provides continuous updates of key figures and which can be used to assess whether distributions fall in line with theoretical expectations over time.
+
+We envision, and invite, at least three natural extensions of this work. The first is to assess the extent to which these correlations, changing through time, have predictive value above and beyond what can be gained from existing forecasting approaches. The second is to shift the focus from the national level to the sub-national level. Our focus on the national level has some justification: although the disease does not have boundaries, many government responses do. However, a focus on the national level prevents examination of patterns in the within-country distribution of Covid-19 which may turn out to be critical for understanding the welfare impacts of the disease. At the time of writing many of the costs are being borne by poor people in rich countries.^[For a historical study of inequality in health outcomes within human societies see @boix2014bones.] The third is to go in the opposite direction and take account of the global nature of the disease, to understand how relations between countries worsen or strengthen responses to the crisis.   
+
+\newpage
+
+
+\clearpage
+
+```{r result_table for log per capita deaths, echo=F,eval=T,message=F,warning=F}
+
+short_table(Y = Y_list[2],
+            Y_label =  Y_labels[2],
+            controls_use = controls_use,
+            caption = "\\label{maintable1}Estimates and p-values: deaths per million (logged)", mc_correct = T,
+            note = "The table shows estimates, raw p-values and p-values adjusted for multiple comparisons (Benjamini-Hochberg procedure). All variables are standardized. The outcome is the logarithm of the number of deaths per million population, as of the date of this paper.")
+```
+
+
+
+
+
+\newpage
+
+# Appendix
+
+## Lasso controls selection
+
+![\label{lasso2} Control variables chosen by Lasso and corresponding coefficients, families 4--7. All variables are standardized.]("figs/lasso_coef_nopol.pdf")
+
+![\label{bivcont}Bivariate relations between selected controls and logged deaths at different points in time. Points represent coefficients calculated for a given day's data in a linear model with no controls.]("figs/deaths_cum_log_controls_biv.pdf")
+
+\newpage
+
+## Changing estimates over time
+
+### State capacity
+![\label{resultss2}State capacity measures: Correlates over time]("figs/deaths_cum_log_state.pdf")
+
+\newpage
+
+### Political structures
+
+![\label{resultsacc2}Government accountability measures: Correlates over time]("figs/deaths_cum_log_account.pdf")
+
+\newpage
+
+### Social structures
+![\label{resultsss2}Social structure measures: Correlates over time]("figs/deaths_cum_log_social.pdf")
+
+\newpage
+
+### Global linkages
+
+![\label{resultsg3} Global integration measures: Correlates over time]("figs/deaths_cum_log_econ.pdf")
+
+\newpage
+
+### Environmental risks
+
+![\label{resultspr2} Environmental risks measures: Correlates over time]("figs/deaths_cum_log_phys.pdf")
+
+\newpage
+
+### Health risks
+
+![\label{resultsdemog2}Health risks measures: Correlates over time]("figs/deaths_cum_log_epi.pdf")
+
+\newpage
+
+### Health systems
+
+![\label{resultssp2}Health systems measures: Correlates over time]("figs/deaths_cum_log_health_sys.pdf")
+
+\newpage
+
+## Details on measures used {#app}
+
+
+```{r, echo = FALSE, warning=FALSE, comment=NA, error=FALSE}
+read.csv('measures.csv') %>%
+  filter(include==1) %>%
+  dplyr::select(c(labels, Source, Definition)) %>%
+  mutate(Definition = str_trim(Definition)) %>%
+  kable(format = 'latex',
+        booktabs = TRUE,
+        longtable = TRUE,
+        caption = 'Sources',
+        col.names = c('Variable', 'Sources',
+                      'Variable definition')) %>%
+  kable_styling(latex_options = 'repeat_header',
+                bootstrap_options = c('striped','condensed'),
+                font_size = 10) %>%
+  column_spec(column = c(1:3),
+              width = c('4cm','2cm','13cm')) %>%
+  landscape()
+```
+
+## Subsets
+
+### Excluding low quality data countries
+
+\vspace*{-5cm}
+
+```{r plot_highqual, echo = F, message=F, warning=F, comment=NA, error=FALSE,fig.width=8.5,fig.height=11, fig.cap = '\\label{results_highqual}Correlates of Corona outcomes. Countries in top 2/3 of health data quality distribution. Points represent normalized coefficients from either a bivariate model (circles) or a model with controls (see text) (squares).'}
+
+df_today %>%
+  filter(detect_index > 33) %>%
+  results_list(Y_list = c('deaths_cum_log', 'deaths_cum_per_million_log'),
+               Y_labels = c('Deaths total (logged)', 'Deaths/million'),
+               family=family,
+               family_labels=family_labels,
+               controls_use=controls_use) %>%
+  plotresults()
+
+```
+
+
+\clearpage
+
+### Wealthy / Less Wealthy subsets
+
+\vspace*{-1cm}
+
+```{r plot_hiinc, echo = F, message=F, warning=F, comment=NA, error=FALSE,fig.width=8.5,fig.height=11, fig.cap = "\\label{results_lowinc}Correlates of Corona outcomes. Restricted to countries in top 25% of per capita income distribution. Points represent normalized coefficients from either a bivariate model (circles) or a model with controls (see text) (squares)."}
+
+df_today %>%
+  filter(gdp_pc >= 30) %>%
+  filter(detect_index > 33) %>%
+  results_list(Y_list = c('deaths_cum_log', 'deaths_cum_per_million_log'),
+               Y_labels = c('Deaths total (logged)', 'Deaths/million'),
+               family=family,
+               family_labels=family_labels,
+               controls_use=controls_use) %>%
+  plotresults()
+
+```
+
+\newpage
+
+```{r plot_lowinc, echo = F, message=F, warning=F, comment=NA, error=FALSE,fig.width=8.5,fig.height=11, fig.cap = "\\label{results_hiinc} Correlates of Corona outcomes. Restricted to countries in lower 75% of per capita income distribution. Points represent normalized coefficients from either a bivariate model (circles) or a model with controls (see text) (squares)."}
+
+df_today %>%
+  filter(gdp_pc < 30) %>%
+  filter(detect_index > 33) %>%
+  results_list(Y_list = c('deaths_cum_log', 'deaths_cum_per_million_log'),
+               Y_labels = c('Deaths total (logged)', 'Deaths/million'),
+               family=family,
+               family_labels=family_labels,
+               controls_use=controls_use) %>%
+  plotresults()
+
+```
+
+\clearpage
+
+
+## Alternative outcome coding: Relative dates
+
+Analysis from `r rel_cut` days after the 10th reported case is given in Figure \ref{results_summary_rel}. A visualization of the distribution of outcomes in this set is given in Figure \ref{resgraph}. This analysis covers `r df_rel %>% nrow` cases with data on controls.
+
+```{r, echo = FALSE, fig.cap= paste("\\label{resgraph}Residuals, ", rel_cut, " days after 10th reported case"), warning = FALSE,, fig.width = 8, fig.height = 3.6}  
+
+df_rel %>%
+  mutate(residuals = lm(as.formula(paste("deaths_cum_log ~ ", paste(controls, collapse = "+"))),
+               data = df_rel)$residuals) %>%
+  mutate(do_label = ifelse(abs(residuals) >
+                             quantile(abs(residuals), 0.7, na.rm= T),
+                           1, 0)) %>%  
+  ggplot(aes(pandemic_prep, residuals)) +
+  geom_point(alpha = 0.5, size = 2) +
+  xlab("Pandemic preparedness")+
+  ylab("Cumulative Deaths (Residuals)") +
+  theme_bw() +  
+  theme(panel.grid.minor = element_blank()) +
+  ggrepel::geom_text_repel(data = . %>% filter(do_label == 1),
+                           aes(label = geoid2))
+```
+
+```{r relativetime, echo = F, message=F, warning=F, comment=NA, error=FALSE,fig.width=8.5,fig.height=10.5, fig.cap = paste0("\\label{results_summary_rel}Correlates of Corona outcomes (", rel_cut,  " days since 10th case). Points represent normalized coefficients from either a bivariate model (circles) or a model with controls (squares).")}
+
+df_rel %>%
+  results_list(Y_list = c('deaths_cum_log', 'deaths_cum_per_million_log'),
+               Y_labels = c('Deaths total (logged)', 'Deaths/million'),
+               family=family,
+               family_labels=family_labels,
+               controls_use=controls_use) %>%
+  plotresults()
+
+```
+
+\clearpage
+
+
+## Lasso details
+\label{lasso_details}
+
+Our Lasso procedure is as follows:
+
+1. We split the sample into train and test sets, such that we obtain two outcome vectors $Y^\text{test}$ and $Y^\text{train}$, as well as corresponding input matrices $X^\text{test}$ and $X^\text{train}$. The predictors that enter the model are either all predictors, or predictors from families 4--7.As an additional constraint, we only add predictors if they are not missing for at least 80% of all countries. The original data set is split such that 20% of all observations are in the test set, and 80% of all observations in the train set.
+
+2. We use the training set to determine the optimal shrinkage parameter $\lambda$. This is done using 5-fold cross validation. We then choose the parameter $\lambda^\text{Opt}$ that minimizes the average out-of-sample MSE across the five folds. This step is done without using the test set at all.
+
+3. We then fit a model using $Y^\text{train}$ and $X^\text{train}$, based on the previously determined shrinkage parameter $\lambda^\text{Opt}$. This gives us the predicted values $\hat{Y}^\text{train}$. We can then calculate the in-sample MSE based on the difference between the fitted values $\hat{Y}^\text{train}$ and the true values $Y^\text{train}$.
+
+4. Since we now have the model from step 3, we can predict the outcome for the test set using the input matrix $X^\text{test}$. This gives us the predicted values $\hat{Y}^\text{test}$. We then calculate $\text{MSE}(Y^\text{test},  \hat{Y}^\text{test})$
+
+5. In addition, we estimate MSEs from 'empty' models, i.e. models that do not include any covariates. For these models, the predicted values are simply the in-sample means of the outcomes.
+
+The exact definitions for all MSE quantities are as follows
+
+* In-sample MSE: $\sqrt{\frac{1}{n_\text{train}}\sum_{i=1}^{n_\text{train}}(\hat{Y}_i^\text{train} - Y_i^\text{train})^2}$
+* Out-of-sample MSE: $\sqrt{\frac{1}{n_\text{test}}\sum_{i=1}^{n_\text{test}}(\hat{Y}_i^\text{test} - Y_i^\text{test})^2}$
+* In-sample empty model MSE $\sqrt{\frac{1}{n_\text{train}}\sum_{i=1}^{n_\text{train}}(\hat{Y}_i^\text{train} - \bar{Y}^\text{train})^2}$
+* Out-of-sample empty model MSE $\sqrt{\frac{1}{n_\text{test}}\sum_{i=1}^{n_\text{test}}(\hat{Y}_i^\text{test} - \bar{Y}^\text{train})^2}$
+
+We conduct the above steps, setting LASSO to search over two different covariate spaces.. First, we provide to LASSO all covariates from families 4, 5, 6 and 7. This set excludes variables which fall under the social, political or state capacity families. Second, we give to LASSO the full set of predictors, which includes predictors from all seven variable families.
+
+Since we split the sample into training and test sets, our Lasso procedure has a stochastic component. To make sure the results are not driven by one specific split between test and training sets, we instead execute the procedure for 100 randomly chosen test-train splits. For all MSEs, we therefore end up with 100 different values based on the 100 train-test splits. When presenting MSE results in figure \ref{lasso}, we show the mean MSE, as well as intervals that include all values from the 0.025 to the 0.975 quantiles.
+
+\newpage
+
+
+# References
+
+
+
+

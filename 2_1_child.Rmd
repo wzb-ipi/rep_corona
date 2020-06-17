@@ -1,0 +1,329 @@
+---
+title: "graphs child"
+author: "ipi"
+date: "3/29/2020"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo = FALSE}
+  if(Y == "deaths_cum_log") {
+    XX <- controls
+    Clab <- controls_labels
+
+  } else {
+    XX <- controls_deaths_capita
+    Clab <- controls_deaths_capita_labels
+  }
+
+```  
+
+### State capacity
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+
+control_text <- paste0("Controls: ", paste(Clab, collapse = ", "))
+
+X = state_cap_vars
+Xlab = state_cap_vars_labels
+
+out <- 
+  results(Y = Y, X =  X, Xlab = Xlab, XX = XX,
+        bivariate = FALSE, relative_dates = relative_dates) 
+
+do_plots(out, xlab)
+
+```
+
+```{r, include = FALSE, eval = dographs}
+pdf(paste0("figs/", Y,"_state.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+```
+
+
+```{r, include = TRUE, eval = TRUE}
+filter(measures, family == "state_cap_vars"  | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+```
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+### Political Institutions
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+X = pol_account_vars
+Xlab = pol_account_vars_labels
+
+out <- 
+  results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = FALSE, relative_dates = relative_dates) 
+
+do_plots(out, xlab)
+
+```
+
+
+```{r, include = FALSE, eval = dographs}
+pdf(paste0("figs/", Y,"_account.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+
+filter(measures, family == "pol_account_vars" | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+
+```
+
+
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+
+
+### Social structures
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+X = social_vars
+Xlab = social_vars_labels
+
+out <- results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = FALSE, relative_dates = relative_dates)
+
+do_plots(out, xlab)
+```
+
+
+```{r, include = FALSE, eval = dographs}
+
+pdf(paste0("figs/", Y,"_social.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+```
+
+
+
+```{r}
+filter(measures, family == "social_vars"  | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+```
+
+
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+
+
+### Global Linkages
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+X = econ_vars
+Xlab = econ_vars_labels
+
+out <- results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = FALSE, relative_dates = relative_dates)
+
+do_plots(out, xlab)
+```
+
+
+```{r, include = FALSE, eval = dographs}
+
+pdf(paste0("figs/", Y,"_econ.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+```
+
+
+```{r}
+filter(measures, family == "econ_vars"  | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+```
+
+
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+
+
+### Environmental risks
+
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+X = phys_vars
+Xlab = phys_vars_labels
+
+out <- results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = FALSE, relative_dates = relative_dates)
+
+do_plots(out, xlab)
+```
+
+
+```{r, include = FALSE, eval = dographs}
+pdf(paste0("figs/", Y,"_phys.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+```
+
+
+```{r}
+filter(measures, family == "phys_vars"  | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+```
+
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+
+### Health risks
+
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+X = epi_vars
+Xlab = epi_vars_labels
+
+out <- results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = FALSE, relative_dates = relative_dates)
+
+do_plots(out, xlab)
+```
+
+
+```{r, include = FALSE, eval = dographs}
+pdf(paste0("figs/", Y,"_epi.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+```
+
+
+```{r}
+filter(measures, family == "epi_vars"  | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+```
+
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+
+### Health system
+
+
+```{r, fig.cap = control_text, warning = FALSE, message = FALSE}
+X = health_sys_vars
+Xlab = health_sys_vars_labels
+
+out <- results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = FALSE, relative_dates = relative_dates)
+
+do_plots(out, xlab)
+
+```
+
+
+```{r, include = FALSE, eval = dographs}
+pdf(paste0("figs/", Y,"_health_sys.pdf"), width = 8, height = 6)
+ do_plots(out, xlab)
+dev.off()
+```
+
+```{r, fig.cap = "No controls", warning = FALSE, message = FALSE}
+results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+        bivariate = TRUE, relative_dates = relative_dates) %>% do_plots(xlab)
+```
+
+
+```{r, eval = TRUE, include = TRUE}
+filter(measures, family == "health_sys_vars"  | family == "outcome") %>% select(labels, Source, Definition) %>% kable(caption = "Sources")
+```
+
+
+
+```{r, child = "2_2_notes.Rmd"}
+
+```
+
+
+
+### Controls  
+
+
+```{r, echo = FALSE}
+if(Y == "deaths_cum_log") {
+    X <- controls
+    Xlab <- controls_labels}
+
+  if(Y == "deaths_cum_per_million_log") {
+    X <- controls_deaths_capita
+    Xlab <- controls_deaths_capita_labels}
+
+Mbase2 <- lm_robust(as.formula(paste(Y, " ~ ", paste(X, collapse = "+"))),
+           	data = filter(df, as.Date(df$date_rep) == data_date))
+
+```
+
+As of `r format(data_date, '%d %B, %Y')`, the five control variables account for `r round(100*Mbase2$r.squared, 2)`% of  the cross national variation in deaths.
+
+The $R^2$ in the figures below shows the share of the variation that is explained by each control variable on its own. 
+
+```{r, fig.cap = "Bivariate relations between controls and deaths (logged)", echo = FALSE, message = FALSE, warning = FALSE}
+
+  relative_dates <- FALSE
+  xlab           <- "Days since 1 Jan 2020"
+  
+  out <- results(Y = Y, X =  X, Xlab = Xlab, XX=XX,
+          bivariate = TRUE, relative_dates = relative_dates)
+   do_plots(out, xlab)
+```
+
+The $R^2$ in the figures below shows the share of the residual variation that is explained by each control variable after taking account of the other control variables.
+
+```{r, fig.cap = "Relations between controls and deaths (logged), conditional on other controls", echo = FALSE, message = FALSE, warning = FALSE}
+  relative_dates <- FALSE
+  xlab           <- "Days since 1 Jan 2020"
+  
+  out <- results(Y = Y, X =  X, Xlab = Xlab, XX = XX,
+          bivariate = FALSE, relative_dates = relative_dates)
+   do_plots(out, xlab)
+```
